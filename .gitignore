@@ -137,3 +137,4 @@ dmypy.json
 # Logging
 */saved_models/*
 *monitor.csv
+best_model.zip
