@@ -5,7 +5,7 @@ from numpy.lib.stride_tricks import sliding_window_view
 from gym import Env
 from gym.spaces import Box, MultiDiscrete, Discrete
 from sklearn.preprocessing import normalize
-from rl_instruments.utils.guitar import GuitarMelody, make_melody
+from rl_instruments.utils.ks import MelodyData, make_melody
 
 
 class KSEnv(Env):
@@ -23,7 +23,7 @@ class KSEnv(Env):
     # Maximum possible amplitude of a synthesized waveform
     MAX_AMP = 2.0
 
-    def __init__(self, target_melody: GuitarMelody) -> None:
+    def __init__(self, target_melody: MelodyData) -> None:
         self.target_audio = target_melody.audio
         self.n_samples = target_melody.audio.size
         self.sr = target_melody.sr
@@ -116,7 +116,7 @@ class KSEnv(Env):
 
 
 class KSSingleParamEnv(KSEnv):
-    def __init__(self, target_melody: GuitarMelody, controlable_parameter: str) -> None:
+    def __init__(self, target_melody: MelodyData, controlable_parameter: str) -> None:
         if controlable_parameter not in ["frequency", "pluck_position", "loss_factor", "amplitude"]:
             raise ValueError
 
@@ -158,7 +158,7 @@ class KSSingleParamEnv(KSEnv):
 
 
 class KSMultiParamEnv(KSEnv):
-    def __init__(self, target_melody: GuitarMelody, controlable_parameters: 'set[str]') -> None:
+    def __init__(self, target_melody: MelodyData, controlable_parameters: 'set[str]') -> None:
 
         if len(controlable_parameters) == 0:
             raise ValueError

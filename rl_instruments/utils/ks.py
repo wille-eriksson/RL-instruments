@@ -6,7 +6,7 @@ from rl_instruments.environments.physical_models import KSEnv
 
 
 @dataclass
-class GuitarMelody:
+class MelodyData:
     audio: np.ndarray
     sr: int
     bpm: int
@@ -52,12 +52,12 @@ def apply_ks(s: int, n: int, decay_factor: float = 0.996) -> np.ndarray:
     # END SOLUTION
 
 
-def guitar_string(frequency: int,
-                  pluck_position: float = 0.5,
-                  decay_factor: float = 0.996,
-                  amplitude: float = 1.0,
-                  n_samples: int = 30000,
-                  sample_rate: int = 44100) -> np.ndarray:
+def synthesize_string(frequency: int,
+                      pluck_position: float = 0.5,
+                      decay_factor: float = 0.996,
+                      amplitude: float = 1.0,
+                      n_samples: int = 30000,
+                      sample_rate: int = 44100) -> np.ndarray:
     """Return a list of num_samples samples synthesizing a guitar string."""
 
     delay = int(sample_rate / frequency)
@@ -80,7 +80,7 @@ def make_melody(freqs: 'list[int]',
     t = (60/bpm)*(4/granularity_factor)
     n_samples = int(sr*t)
 
-    return np.concatenate([guitar_string(freq, pluck_position, decay_factor, amp, n_samples, sr)
+    return np.concatenate([synthesize_string(freq, pluck_position, decay_factor, amp, n_samples, sr)
                            for freq, pluck_position, decay_factor, amp in zip(freqs, pluck_positions, decay_factors, amplitudes)])
 
 
