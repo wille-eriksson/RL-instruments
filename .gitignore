@@ -131,6 +131,9 @@ dmypy.json
 # OSX
 .DS_Store
 
+# VS Code
+.vscode/
+
 # Logging
 */saved_models/*
 *monitor.csv
