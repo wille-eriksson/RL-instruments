@@ -133,4 +133,4 @@ dmypy.json
 
 # Logging
 */saved_models/*
-*/monitor.csv
+*monitor.csv
