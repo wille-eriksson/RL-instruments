@@ -28,11 +28,6 @@ class SaveOnBestTrainingRewardCallback(BaseCallback):
         self.save_path = os.path.join(log_dir, 'best_model')
         self.best_mean_reward = -np.inf
 
-    def _init_callback(self) -> None:
-        # Create folder if needed
-        if self.save_path is not None:
-            os.makedirs(self.save_path, exist_ok=True)
-
     def _on_step(self) -> bool:
         if self.n_calls % self.check_freq == 0:
 
@@ -79,6 +74,7 @@ class WrappedModel:
         if exists(path):
             del self.model
             self.model = self.algorithm.load(path)
+            print("Best model loaded.")
         else:
             print("No model file exists.")
 
