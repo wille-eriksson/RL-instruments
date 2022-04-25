@@ -66,10 +66,13 @@ def make_melody(freqs: 'list[int]',
                 amplitudes: 'list[float]',
                 bpm: int,
                 sr: int,
-                granularity_factor: int) -> np.ndarray:
+                note_value: int) -> np.ndarray:
 
-    t = (60/bpm)*(4/granularity_factor)
-    n_samples = int(sr*t)
+    # Note length in seconds
+    note_length = (60/bpm)*(4*note_value)
+
+    # Note samples
+    n_samples = int(sr*note_length)
 
     return np.concatenate([synthesize_string(freq, pluck_position, loss_factor, amp, n_samples, sr)
                            for freq, pluck_position, loss_factor, amp in zip(freqs, pluck_positions, loss_factors, amplitudes)])
@@ -84,7 +87,7 @@ def predict_melody(env: Env, model: WrappedModel) -> 'tuple[np.ndarray,float,np.
         obs, reward, done, _ = env.step(action)
         score += reward
     predicted_audio = make_melody(
-        obs[:, 0], obs[:, 1], obs[:, 2], obs[:, 3], env.bpm, env.sr, env.granularity_factor)
+        obs[:, 0], obs[:, 1], obs[:, 2], obs[:, 3], env.bpm, env.sr, env.note_value)
     return predicted_audio, score, obs
 
 
@@ -93,5 +96,5 @@ class MelodyData:
     audio: np.ndarray
     sr: int
     bpm: int
-    n_measures: int
-    granularity_factor: int
+    n_notes: int
+    note_value: int
