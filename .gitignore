@@ -135,7 +135,7 @@ dmypy.json
 .vscode/
 
 # Logging
-*/saved_models/*
 *.csv
 *.pickle
+*.wave
 best_model.zip
