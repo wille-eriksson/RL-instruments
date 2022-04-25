@@ -78,17 +78,17 @@ def make_melody(freqs: 'list[int]',
                            for freq, pluck_position, loss_factor, amp in zip(freqs, pluck_positions, loss_factors, amplitudes)])
 
 
-def predict_melody(env: Env, model: WrappedModel) -> 'tuple[np.ndarray,float,np.ndarray]':
+def predict_melody(env: Env, model: WrappedModel) -> 'tuple[np.ndarray,list[float],np.ndarray]':
     obs = env.reset()
     done = False
-    score = 0.0
+    rewards = []
     while not done:
         action, _ = model.predict(obs, deterministic=True)
         obs, reward, done, _ = env.step(action)
-        score += reward
+        rewards.append(reward)
     predicted_audio = make_melody(
         obs[:, 0], obs[:, 1], obs[:, 2], obs[:, 3], env.bpm, env.sr, env.note_value)
-    return predicted_audio, score, obs
+    return predicted_audio, rewards, obs
 
 
 @dataclass
