@@ -1,6 +1,7 @@
-from typing import Union
 import numpy as np
 import librosa
+from typing import Union
+from enum import Enum
 from numpy.lib.stride_tricks import sliding_window_view
 from gym import Env
 from gym.spaces import Box, MultiDiscrete, Discrete
@@ -8,20 +9,38 @@ from sklearn.preprocessing import normalize
 from rl_instruments.utils.ks import MelodyData, make_melody
 
 
+# Two octaves, E2 to E4
+MIN_FREQ = 82
+MAX_FREQ = 330
+
+# Maximum possible amplitude of a synthesized waveform
+MAX_AMP = 2.0
+
+# Default values for uncontrolable parameters
+
+
+class DefaultParameterValue(Enum):
+    FREQ = 110
+    PLUCK_POSITION = 0.5
+    LOSS_FACTOR = 0.996
+    AMP = 1.0
+
+
+class ControlableParameter(Enum):
+    FREQUENCY = 'Frequency', DefaultParameterValue.FREQ
+    PLUCK_POSITION = 'Pluck position', DefaultParameterValue.PLUCK_POSITION
+    LOSS_FACTOR = 'Loss factor', DefaultParameterValue.LOSS_FACTOR
+    AMPLITUDE = 'Amplitude', DefaultParameterValue.AMP
+
+    def __init__(self, _: str, default: DefaultParameterValue = None):
+        self._default_ = default.value
+
+    @property
+    def default(self):
+        return self._default_
+
+
 class KSEnv(Env):
-
-    # Default values for uncontrolable parameters
-    DEFAULT_FREQ = 220
-    DEFAULT_PLUCK_POSITION = 0.5
-    DEFAULT_LOSS_FACTOR = 0.996
-    DEFAULT_AMP = 1.0
-
-    # Two octaves, E2 to E4
-    MIN_FREQ = 82
-    MAX_FREQ = 330
-
-    # Maximum possible amplitude of a synthesized waveform
-    MAX_AMP = 2.0
 
     def __init__(self, target_melody: MelodyData) -> None:
         self.target_audio = target_melody.audio
@@ -40,12 +59,12 @@ class KSEnv(Env):
         self.target_envelopes = [self._get_envelope(
             self.target_audio[m*self.spm:(m+1)*self.spm]) for m in range(self.n_measures)]
 
-        self.freq_range = self.MAX_FREQ - self.MIN_FREQ
+        self.freq_range = MAX_FREQ - MIN_FREQ
 
         low = (np.ones((self.n_measures, 1)) @
-               np.array([self.MIN_FREQ, 0.0, 0.96, 1.0]).reshape(1, -1)).astype(np.float32)
+               np.array([MIN_FREQ, 0.0, 0.96, 1.0]).reshape(1, -1)).astype(np.float32)
         high = (np.ones((self.n_measures, 1)) @
-                np.array([self.MAX_FREQ, 0.5, 0.996, self.MAX_AMP]).reshape(1, -1)).astype(np.float32)
+                np.array([MAX_FREQ, 0.5, 0.996, MAX_AMP]).reshape(1, -1)).astype(np.float32)
 
         self.observation_space = Box(low=low, high=high)
 
@@ -102,7 +121,7 @@ class KSEnv(Env):
     def _get_envelope_reward(self, audio: np.ndarray) -> float:
         envelope = self._get_envelope(audio)
         mse = np.sum(((envelope - self.target_envelopes[self.current_measure]) /
-                     self.MAX_AMP)**2)/envelope.size
+                     MAX_AMP)**2)/envelope.size
         return 1 - mse
 
     def _get_envelope(self, audio: np.ndarray) -> np.ndarray:
@@ -116,56 +135,50 @@ class KSEnv(Env):
 
 
 class KSSingleParamEnv(KSEnv):
-    def __init__(self, target_melody: MelodyData, controlable_parameter: str) -> None:
-        if controlable_parameter not in ["frequency", "pluck_position", "loss_factor", "amplitude"]:
-            raise ValueError
+    def __init__(self, target_melody: MelodyData, controlable_parameter: ControlableParameter) -> None:
 
         super().__init__(target_melody)
 
         self.controlable_parameter = controlable_parameter
         self._define_action_space(controlable_parameter)
 
-    def _define_action_space(self, controlable_parameter: str) -> None:
-        if controlable_parameter == "frequency":
+    def _define_action_space(self, controlable_parameter: ControlableParameter) -> None:
+        if controlable_parameter is ControlableParameter.FREQUENCY:
             self.action_space = Discrete(self.freq_range)
 
-        elif controlable_parameter == "pluck_position":
+        elif controlable_parameter is ControlableParameter.PLUCK_POSITION:
             self.action_space = Discrete(3)
 
-        elif controlable_parameter == "loss_factor":
+        elif controlable_parameter is ControlableParameter.LOSS_FACTOR:
             self.action_space = Discrete(2)
 
-        elif controlable_parameter == "amplitude":
+        elif controlable_parameter is ControlableParameter.AMPLITUDE:
             self.action_space = Discrete(2)
 
     def _get_parameters(self, action: int) -> 'tuple[int, float, float, float]':
 
-        freq, pluck_position, loss_factor, amplitude = self.DEFAULT_FREQ, self.DEFAULT_PLUCK_POSITION, self.DEFAULT_LOSS_FACTOR, self.DEFAULT_AMP
+        freq, pluck_position, loss_factor, amplitude = DefaultParameterValue.FREQ.value, DefaultParameterValue.PLUCK_POSITION.value, DefaultParameterValue.LOSS_FACTOR.value, DefaultParameterValue.AMP.value
 
-        if self.controlable_parameter == "frequency":
-            freq = self.MIN_FREQ + action
+        if self.controlable_parameter is ControlableParameter.FREQUENCY:
+            freq = MIN_FREQ + action
 
-        elif self.controlable_parameter == "pluck_position":
+        elif self.controlable_parameter is ControlableParameter.PLUCK_POSITION:
             pluck_position = action*0.25
 
-        elif self.controlable_parameter == "loss_factor":
+        elif self.controlable_parameter is ControlableParameter.LOSS_FACTOR:
             loss_factor = 0.996 - 0.036 * action
 
-        elif self.controlable_parameter == "amplitude":
-            amplitude = (self.MAX_AMP - 1) * action + 1
+        elif self.controlable_parameter is ControlableParameter.AMPLITUDE:
+            amplitude = (MAX_AMP - 1) * action + 1
 
         return freq, pluck_position, loss_factor, amplitude
 
 
 class KSMultiParamEnv(KSEnv):
-    def __init__(self, target_melody: MelodyData, controlable_parameters: 'set[str]') -> None:
+    def __init__(self, target_melody: MelodyData, controlable_parameters: 'set[ControlableParameter]') -> None:
 
         if len(controlable_parameters) == 0:
             raise ValueError
-
-        for controlable_parameter in controlable_parameters:
-            if controlable_parameter not in ["frequency", "pluck_position", "loss_factor", "amplitude"]:
-                raise ValueError
 
         super().__init__(target_melody)
 
@@ -176,40 +189,40 @@ class KSMultiParamEnv(KSEnv):
 
         action_space_array = []
 
-        if "frequency" in controlable_parameters:
+        if ControlableParameter.FREQUENCY in controlable_parameters:
             action_space_array.append(self.freq_range)
 
-        if "pluck_position" in controlable_parameters:
+        if ControlableParameter.PLUCK_POSITION in controlable_parameters:
             action_space_array.append(3)
 
-        if "loss_factor" in controlable_parameters:
+        if ControlableParameter.LOSS_FACTOR in controlable_parameters:
             action_space_array.append(2)
 
-        if "amplitude" in controlable_parameters:
+        if ControlableParameter.AMPLITUDE in controlable_parameters:
             action_space_array.append(2)
 
         self.action_space = MultiDiscrete(action_space_array)
 
     def _get_parameters(self, action: 'list[int]') -> 'tuple[int, float, float, float]':
 
-        freq, pluck_position, loss_factor, amplitude = self.DEFAULT_FREQ, self.DEFAULT_PLUCK_POSITION, self.DEFAULT_LOSS_FACTOR, self.DEFAULT_AMP
+        freq, pluck_position, loss_factor, amplitude = DefaultParameterValue.FREQ.value, DefaultParameterValue.PLUCK_POSITION.value, DefaultParameterValue.LOSS_FACTOR.value, DefaultParameterValue.AMP.value
 
         action_idx = 0
 
-        if "frequency" in self.controlable_parameters:
-            freq = self.MIN_FREQ + action[action_idx]
+        if ControlableParameter.FREQUENCY in self.controlable_parameters:
+            freq = MIN_FREQ + action[action_idx]
             action_idx += 1
 
-        if "pluck_position" in self.controlable_parameters:
+        if ControlableParameter.PLUCK_POSITION in self.controlable_parameters:
             pluck_position = action[action_idx]*0.25
             action_idx += 1
 
-        if "loss_factor" in self.controlable_parameters:
+        if ControlableParameter.LOSS_FACTOR in self.controlable_parameters:
             loss_factor = 0.996 - 0.036 * action[action_idx]
             action_idx += 1
 
-        if "amplitude" in self.controlable_parameters:
-            amplitude = (self.MAX_AMP - 1) * action[action_idx] + 1
+        if ControlableParameter.AMPLITUDE in self.controlable_parameters:
+            amplitude = (MAX_AMP - 1) * action[action_idx] + 1
             action_idx += 1
 
         return freq, pluck_position, loss_factor, amplitude

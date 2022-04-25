@@ -1,1 +1,1 @@
-from .ks import KSEnv, KSMultiParamEnv, KSSingleParamEnv
+from .ks import KSEnv, KSMultiParamEnv, KSSingleParamEnv, ControlableParameter
