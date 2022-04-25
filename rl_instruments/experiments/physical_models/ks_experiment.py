@@ -1,7 +1,8 @@
+from fractions import Fraction
 import os
 import numpy as np
 import pathlib
-import pickle
+import csv
 from random import randint
 from scipy.io.wavfile import write
 from rl_instruments.environments.physical_models import KSSingleParamEnv, ControlableParameter
@@ -54,13 +55,17 @@ def save_experiment_parameters(log_dir: str,
                                n_notes: int,
                                note_value: int) -> None:
 
-    params = {'N_RUNS': n_runs, 'TOTAL_TIMESTEPS': total_timesteps, 'CONTROLABLE_PARAMETER': controlable_parameter.value,
-              'sr': sr, 'bpm': bpm, "n_notes": n_notes, 'note_value': note_value}
+    header = ['Number of runs', 'Total timesteps', 'Controlable parameter',
+              'Sample rate', 'BPM', "Number of notes", 'Note value']
+    data = [n_runs, total_timesteps,  controlable_parameter.name,
+            sr, bpm,  n_notes,  str(Fraction(note_value))]
 
-    filename = log_dir + "experiment_parameters.pickle"
+    filename = log_dir + "/experiment_parameters.csv"
 
-    with open(filename, 'wb') as handle:
-        pickle.dump(params, handle, protocol=pickle.HIGHEST_PROTOCOL)
+    with open(filename, 'w', encoding='UTF8') as f:
+        writer = csv.writer(f)
+        writer.writerow(header)
+        writer.writerow(data)
 
 
 def save_target_parameters(log_dir: str,
@@ -69,25 +74,32 @@ def save_target_parameters(log_dir: str,
                            loss_factors: 'list[float]',
                            amplitudes: 'list[float]') -> None:
 
-    params = {'frequencies': frequencies, 'pluck_positions': pluck_positions, 'loss_factors': loss_factors,
-              'amplitudes': amplitudes}
+    header = ['Frequency', 'Pluck position', 'Loss factor', 'Amplitude']
 
-    filename = log_dir + "target_parameters.pickle"
+    filename = log_dir + "/target_parameters.csv"
 
-    with open(filename, 'wb') as handle:
-        pickle.dump(params, handle, protocol=pickle.HIGHEST_PROTOCOL)
+    with open(filename, 'w', encoding='UTF8') as f:
+        writer = csv.writer(f)
+        writer.writerow(header)
+
+        for f, pp, lf, a in zip(frequencies, pluck_positions, loss_factors, amplitudes):
+            writer.writerow([f, pp, lf, a])
 
 
-def save_prediction(log_dir: str, predicted_audio: np.ndarray, sr: int, predicted_parameters: np.ndarray, score: float) -> None:
-    params = {'frequencies': predicted_parameters[:, 0], 'pluck_positions': predicted_parameters[:, 1],
-              'loss_factors': predicted_parameters[:, 2], 'amplitudes': predicted_parameters[:, 3], "score": score}
+def save_prediction(log_dir: str, predicted_audio: np.ndarray, sr: int, predicted_parameters: np.ndarray, rewards: 'list[float]') -> None:
+    header = ['Frequency', 'Pluck position',
+              'Loss factor', 'Amplitude', 'Reward']
 
-    parameter_filename = log_dir + "predicted_parameters.pickle"
+    parameter_filename = log_dir + "/predicted_parameters.csv"
 
-    with open(parameter_filename, 'wb') as handle:
-        pickle.dump(params, handle, protocol=pickle.HIGHEST_PROTOCOL)
+    with open(parameter_filename, 'w', encoding='UTF8') as f:
+        writer = csv.writer(f)
+        writer.writerow(header)
 
-    audio_filename = log_dir + "predicted_audio.wav"
+        for f, pp, lf, a, r in zip(predicted_parameters[:, 0], predicted_parameters[:, 1], predicted_parameters[:, 2], predicted_parameters[:, 3], rewards):
+            writer.writerow([f, pp, lf, a, r])
+
+    audio_filename = log_dir + "/predicted_audio.wav"
     write(audio_filename, sr, predicted_audio)
 
 
@@ -99,6 +111,9 @@ def run_experiment(base_log_path: str,
                    bpm: int = 120,
                    n_notes: int = 4,
                    note_value: int = 1/8) -> None:
+
+    log_dir = f"{base_log_path}/"
+    os.makedirs(log_dir, exist_ok=True)
 
     save_experiment_parameters(base_log_path,
                                n_runs,
@@ -140,10 +155,10 @@ def run_experiment(base_log_path: str,
         model.learn(total_timesteps)
 
         # Make and save predictions
-        predicted_audio, score, predicted_parameters = predict_melody(
+        predicted_audio, rewards, predicted_parameters = predict_melody(
             env, model)
         save_prediction(log_dir, predicted_audio, sr,
-                        predicted_parameters, score)
+                        predicted_parameters, rewards)
 
 
 if __name__ == '__main__':
@@ -162,6 +177,8 @@ if __name__ == '__main__':
     N_RUNS: int = 3
     TOTAL_TIMESTEPS: int = 1000
     CONTROLABLE_PARAMETER: ControlableParameter = ControlableParameter.FREQUENCY
+
+    # Define path for logging experiment
 
     BASE_LOG_PATH: str = f"{pathlib.Path(__file__).parent.resolve()}/{EXPERIMENT_NAME}"
 
