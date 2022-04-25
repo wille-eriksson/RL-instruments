@@ -1,7 +1,6 @@
 import matplotlib.pyplot as plt
 import numpy as np
 import soundfile as sf
-import random
 from sklearn.preprocessing import normalize
 from pretty_midi import PrettyMIDI, Instrument, Note
 import librosa
