@@ -137,5 +137,5 @@ dmypy.json
 # Logging
 *.csv
 *.pickle
-*.wave
+*.wav
 best_model.zip
