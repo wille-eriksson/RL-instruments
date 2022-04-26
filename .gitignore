@@ -138,4 +138,5 @@ dmypy.json
 *.csv
 *.pickle
 *.wav
+*.npy
 best_model.zip
