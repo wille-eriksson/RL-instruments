@@ -1,11 +1,9 @@
 import numpy as np
-import matplotlib.pyplot as plt
-import copy
 import librosa
 from gym import Env
 from gym.spaces import Discrete, MultiBinary
 from sklearn.preprocessing import normalize
-from rl_instruments.utils import PianoRollManager
+from rl_instruments.utils.piano import plot_piano_roll, PianoRollManager
 
 
 class AudioTargetEnv(Env):
@@ -15,91 +13,67 @@ class AudioTargetEnv(Env):
     :param 2D np.array piano_roll: The ground truth that an agent will try to learn.
     """
 
-    log_dir = "saved_models/audio_target/"
-
-    granularity_dict = {"whole": 1,
-                        "half": 2,
-                        "quarter": 4,
-                        "eight": 8,
-                        "sixteenth": 16,
-                        "thirty-second": 32}
-
-    def __init__(self, audio, sr, bpm, note_granularity, n_bars, n_notes=12, base_note_number=60):
+    def __init__(self, audio: np.ndarray, sr: int, bpm: int, note_value: float, n_notes: int, n_keys: int = 12):
+        self.target_audio = audio
         self.sr = sr
         self.bpm = bpm
-        self.note_granularity = note_granularity
+        self.note_value = note_value
+        self.n_keys = n_keys
         self.n_notes = n_notes
-        self.n_bars = n_bars
 
-        # Set ground truth to be normalized chromagram
-        self.ground_truth = self._get_stft(audio)
+        self.spn = int(self.sr*(4*self.note_value) *
+                       (60/self.bpm))  # Samples per note
 
-        # The possible actions, i.e. which keys to press the current bar.
-        self.action_space = Discrete(self.n_notes)
+        self.target_stfts = [self._get_stft(
+            self.target_audio[m*self.spn:(m+1)*self.spn]) for m in range(self.n_notes)]
+
+        # The possible actions, i.e. which key to press for the current note.
+        self.action_space = Discrete(self.n_keys)
 
         self.observation_space = MultiBinary(
-            n=np.product([self.n_notes, self.n_bars]))
+            n=np.product([self.n_keys, self.n_notes]))
 
-        self.current_bar = 0
-        self.prev_last_window = 0
+        self.reset()
 
-        # Initialize all entries in piano roll to 0.
-        self.state = np.zeros((self.n_notes, self.n_bars), dtype="int8")
-
-    def _next_bar(self):
-        """
-        Increases the current bar count by one and sets all keys in bar to 0.
-        """
-        self.current_bar += 1
-
-        if self.current_bar < self.n_bars:
-            self.state[:, self.current_bar] = 0
-
-    def step(self, action):
+    def step(self, action: int) -> 'tuple[np.ndarray,float,bool,dict]':
 
         # Update state of learnt roll.
-        self.state[action, self.current_bar] = 1
+        self.state[action, self.current_note] = 100
 
-        midi_data = PianoRollManager(self.state[:, :self.current_bar + 1],
+        midi_data = PianoRollManager(self.state[:, :self.current_note + 1],
                                      bpm=self.bpm,
-                                     note_granularity=self.note_granularity,
+                                     note_value=self.note_value,
                                      sr=self.sr)
 
-        audio = midi_data.get_audio()
+        note_audio = midi_data.get_audio()[self.current_note *
+                                           self.spn:(self.current_note+1)*self.spn]
 
-        stft = self._get_stft(audio)
+        reward = self._get_reward(note_audio)
 
-        reward = self._get_reward(stft)
-
-        self._next_bar()
+        self.current_note += 1
 
         # We are done if all bars have been written.
-        done = self.current_bar >= self.n_bars
+        done = self.current_note >= self.n_notes
 
         info = {}
 
         return self.state.flatten(), reward, done, info
 
-    def render(self, mode="human"):
-        plot_roll = copy.deepcopy(self.state)
-        plot_roll[plot_roll == 2] = 0
-        plt.plot_piano_roll(self.state)
+    def render(self, mode="human") -> np.ndarray:
+        plot_piano_roll(self.state)
         return self.state
 
-    def reset(self):
-        self.state = np.zeros((self.n_notes, self.n_bars), dtype="int8")
-        self.current_bar = 0
-        self.prev_last_window = 0
+    def reset(self) -> np.ndarray:
+        self.current_note = 0
+        self.state = np.zeros((self.n_keys, self.n_notes), dtype=np.int8)
         return self.state.flatten()
 
-    def _get_reward(self, stft):
-        start = self.prev_last_window
-        end = stft.shape[1]
-        self.prev_last_window = end
-        reward_array = self.ground_truth[:, start:end] * stft[:, start:end]
+    def _get_reward(self, audio: np.ndarray) -> float:
+        stft = self._get_stft(audio)
+        reward_array = self.target_stfts[self.current_note] * stft
         return np.sum(np.sqrt(np.sum(reward_array, axis=0)))/reward_array.shape[1]
 
-    def _get_stft(self, audio):
+    def _get_stft(self, audio: np.ndarray) -> float:
         return normalize(
             np.abs(librosa.stft(
                 audio, n_fft=1024, win_length=1024, hop_length=1024)),

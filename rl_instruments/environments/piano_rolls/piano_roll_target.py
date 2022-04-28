@@ -10,56 +10,39 @@ class PianoRollTargetEnv(Env):
     :param 2D np.array piano_roll: The ground truth that an agent will try to learn.
     """
 
-    log_dir = "saved_models/piano_roll_target/"
-
-    def __init__(self, piano_roll):
+    def __init__(self, piano_roll: np.ndarray) -> None:
         self.target = piano_roll
-        self.n_notes, self.n_bars = piano_roll.shape
+        self.n_keys, self.n_notes = piano_roll.shape
 
         # The possible actions, i.e. press one key.
-        self.action_space = Discrete(self.n_notes)
+        self.action_space = Discrete(self.n_keys)
 
         self.observation_space = MultiBinary(
-            n=np.product([self.n_notes, self.n_bars]))
+            n=np.product([self.n_keys, self.n_notes]))
 
-        self.current_bar = 0
+        self.reset()
 
-        # Initialize all entries in piano roll to 0.
-        self.state = np.zeros((self.n_notes, self.n_bars), dtype="int8")
-
-    def _next_bar(self):
-        """
-        Increases the current bar count by one and sets all keys in bar to 0.
-        """
-        self.current_bar += 1
-
-        if self.current_bar < self.n_bars:
-            self.state[:, self.current_bar] = 0
-
-    def step(self, action):
+    def step(self, action: int) -> 'tuple[np.ndarray,float,bool,dict]':
 
         # Update state of written piano roll.
-        self.state[action, self.current_bar] = 1
+        self.state[action, self.current_note] = 1
 
         # Correctly pressed key gives a reward of one, incorrect penalty of -1.
-        if self.target[action, self.current_bar] == 1:
-            reward = 1
-        else:
-            reward = -1
+        reward = 1 if self.target[action, self.current_note] == 1 else 0
 
-        self._next_bar()
+        self.current_note += 1
 
         # We are done if all bars have been written.
-        done = self.current_bar >= self.n_bars
+        done = self.current_note >= self.n_notes
 
         info = {}
 
         return self.state.flatten(), reward, done, info
 
-    def render(self):
+    def render(self) -> None:
         pass
 
-    def reset(self):
-        self.state = np.zeros((self.n_notes, self.n_bars), dtype="int8")
-        self.current_bar = 0
+    def reset(self) -> np.ndarray:
+        self.state = np.zeros((self.n_keys, self.n_notes), dtype=np.int8)
+        self.current_note = 0
         return self.state.flatten()
