@@ -1,0 +1,9 @@
+gym==0.21.0
+librosa==0.9.1
+matplotlib==3.5.1
+numpy==1.21.6
+pretty_midi==0.2.9
+scikit_learn==1.0.2
+scipy==1.8.0
+setuptools==61.2.0
+stable_baselines3==1.5.0
