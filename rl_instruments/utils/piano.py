@@ -1,7 +1,6 @@
 from gym import Env
 import matplotlib.pyplot as plt
 import numpy as np
-import soundfile as sf
 from sklearn.preprocessing import normalize
 from pretty_midi import PrettyMIDI, Instrument, Note
 import librosa
@@ -29,9 +28,6 @@ class PianoRollManager():
 
     def get_audio(self) -> np.ndarray:
         return self.audio
-
-    def save_audio(self, path: str) -> None:
-        sf.write(path, self.audio, self.sr)
 
     def _synthesize(self) -> np.ndarray:
         audio = self.midi.synthesize(self.sr) * (self.piano_roll.max()/100)
