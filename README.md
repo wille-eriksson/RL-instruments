@@ -1,5 +1,5 @@
 # RL-instruments
-Master thesis - Reinforcement Learning and Physical Models of Instruments
+### Master thesis - Reinforcement Learning and Physical Models of Instruments
 
 To install the `rl_instruments` package, run
 
