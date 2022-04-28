@@ -7,6 +7,7 @@ from stable_baselines3 import PPO, DQN
 from stable_baselines3.common.callbacks import BaseCallback
 from stable_baselines3.common.results_plotter import load_results, ts2xy
 from stable_baselines3.common.monitor import Monitor
+from stable_baselines3.common.logger import configure
 
 
 class SaveOnBestTrainingRewardCallback(BaseCallback):
@@ -61,12 +62,15 @@ class WrappedModel:
         self.algorithm = algorithm
         self.model = algorithm(policy, env, verbose=1)
 
+        logger = configure(log_dir, ["csv"])
+        self.model.set_logger(logger)
+
     def learn(self, total_timesteps: int, check_freq: int = 1000) -> None:
         callback = SaveOnBestTrainingRewardCallback(
             check_freq=check_freq, log_dir=self.log_dir)
 
         self.model.learn(total_timesteps=total_timesteps,
-                         callback=callback, log_interval=2000)
+                         callback=callback)
         self.load_best_model()
 
     def load_best_model(self) -> None:
