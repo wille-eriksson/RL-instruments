@@ -66,7 +66,7 @@ def make_melody(freqs: 'list[int]',
                 amplitudes: 'list[float]',
                 bpm: int,
                 sr: int,
-                note_value: int) -> np.ndarray:
+                note_value: float) -> np.ndarray:
 
     # Note length in seconds
     note_length = (60/bpm)*(4*note_value)

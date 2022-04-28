@@ -1,31 +1,21 @@
+from gym import Env
 import matplotlib.pyplot as plt
 import numpy as np
 import soundfile as sf
 from sklearn.preprocessing import normalize
 from pretty_midi import PrettyMIDI, Instrument, Note
 import librosa
+from rl_instruments.models import WrappedModel
 
 
 class PianoRollManager():
 
-    granularity_dict = {"whole": 1,
-                        "half": 2,
-                        "quarter": 4,
-                        "eight": 8,
-                        "sixteenth": 16,
-                        "thirty-second": 32}
-
-    def __init__(self, piano_roll, bpm, note_granularity, sr=8092, base_note_number=60):
+    def __init__(self, piano_roll: np.ndarray, bpm: int, note_value: float, sr: int = 8092, base_note_number: int = 60) -> None:
         self.piano_roll = piano_roll
         self.bpm = bpm
         self.sr = sr
         self.base_note_number = base_note_number
-
-        try:
-            self.note_granularity_factor = self.granularity_dict[note_granularity]
-        except:
-            raise ValueError("Valid values for \"note_granularity\" are: %s." % (
-                ", ".join(self.granularity_dict.keys())))
+        self.note_value = note_value
 
         self.midi = self._create_midi_from_piano_roll()
         self.audio = self._synthesize()
@@ -34,22 +24,22 @@ class PianoRollManager():
                 self.audio, n_fft=1024, win_length=1024, hop_length=1024)),
             axis=0)
 
-    def get_stft(self):
+    def get_stft(self) -> np.ndarray:
         return self.stft
 
-    def get_audio(self):
+    def get_audio(self) -> np.ndarray:
         return self.audio
 
-    def save_audio(self, path):
+    def save_audio(self, path: str) -> None:
         sf.write(path, self.audio, self.sr)
 
-    def _synthesize(self):
-        audio = self.midi.synthesize(self.sr)
-        note_length = self.bpm/60/self.note_granularity_factor
+    def _synthesize(self) -> np.ndarray:
+        audio = self.midi.synthesize(self.sr) * (self.piano_roll.max()/100)
+        note_length = (60/self.bpm)*(4*self.note_value)
         n_samples = int(self.sr * note_length)*self.piano_roll.shape[1]
         return audio[:n_samples]
 
-    def _create_midi_from_piano_roll(self):
+    def _create_midi_from_piano_roll(self) -> PrettyMIDI:
 
         midi_data = PrettyMIDI()
         instrument = Instrument("")
@@ -66,39 +56,26 @@ class PianoRollManager():
 
         return midi_data
 
-    def _get_notes(self, note_number, note_roll):
-        note_length = self.bpm/60/self.note_granularity_factor
+    def _get_notes(self, note_number: int, note_roll: np.ndarray) -> 'list[Note]':
+        note_length = (60/self.bpm)*(4*self.note_value)
         notes = []
 
-        for idx, pressed in enumerate(note_roll):
+        for idx, velocity in enumerate(note_roll):
 
-            if (pressed and idx == 0):
+            if (velocity != 0):
                 start = idx * note_length
-            elif (not pressed and idx == 0):
-                pass
-            elif pressed and not prev_pressed:
-                start = idx * note_length
-            elif not pressed and prev_pressed:
-                end = idx * note_length
-                new_note = Note(velocity=100, pitch=note_number,
+                end = (idx+1) * note_length
+                new_note = Note(velocity=velocity, pitch=note_number,
                                 start=start, end=end)
                 notes.append(new_note)
-
-            if pressed and idx == len(note_roll) - 1:
-                end = len(note_roll) * note_length
-                new_note = Note(velocity=100, pitch=note_number,
-                                start=start, end=end)
-                notes.append(new_note)
-
-            prev_pressed = pressed
 
         return notes
 
-    def _get_note_number(self, idx):
+    def _get_note_number(self, idx: int) -> int:
         return self.base_note_number + idx
 
 
-def plot_piano_roll(piano_roll, title="Piano roll"):
+def plot_piano_roll(piano_roll: np.ndarray, title: str = "Piano roll") -> None:
     """
     Function for plotting a piano roll.
     """
@@ -111,13 +88,13 @@ def plot_piano_roll(piano_roll, title="Piano roll"):
     plt.show()
 
 
-def predict_piano_roll(model, env):
+def predict_piano_roll(model: WrappedModel, env: Env) -> 'tuple[np.ndarray,list[float]]':
     obs = env.reset()
     done = False
-    score = 0
+    rewards = []
     while not done:
         action, _ = model.predict(obs, deterministic=True)
         obs, reward, done, _ = env.step(action)
-        score += reward
+        rewards.append(reward)
 
-    return obs.reshape((env.n_notes, env.n_bars)), score
+    return obs.reshape((env.n_keys, env.n_notes)), rewards
