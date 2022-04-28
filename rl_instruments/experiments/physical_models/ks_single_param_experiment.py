@@ -13,13 +13,13 @@ from rl_instruments.utils.ks import make_melody, MelodyData, predict_melody
 def create_target_parameters(controlable_parameter: ControlableParameter, controlable_array: 'list[str]') -> 'tuple[list[float], list[float], list[float], list[float]]':
 
     n_notes = len(controlable_array)
-    target_params = {}
+    target_params = []
 
-    for param in ControlableParameter:
-        target_params[param] = controlable_array if controlable_parameter is param else [
-            param.default_value]*n_notes
+    for param in sorted(ControlableParameter):
+        target_params.append(controlable_array if controlable_parameter is param else [
+            param.default_value]*n_notes)
 
-    return target_params[ControlableParameter.FREQUENCY], target_params[ControlableParameter.PLUCK_POSITION], target_params[ControlableParameter.LOSS_FACTOR], target_params[ControlableParameter.AMPLITUDE]
+    return target_params
 
 
 def create_target_melody(frequencies: 'list[float]',
@@ -103,14 +103,16 @@ def save_prediction(log_dir: str, predicted_audio: np.ndarray, sr: int, predicte
     write(audio_filename, sr, predicted_audio)
 
 
-def run_experiment(base_log_path: str,
-                   n_runs: int,
-                   total_timesteps: int,
-                   controlable_parameter: ControlableParameter,
-                   sr: int = 8000,
-                   bpm: int = 120,
-                   n_notes: int = 4,
-                   note_value: int = 1/8) -> None:
+def run_single_param_ks_experiment(base_log_path: str,
+                                   n_runs: int,
+                                   total_timesteps: int,
+                                   controlable_parameter: ControlableParameter,
+                                   sr: int,
+                                   bpm: int,
+                                   n_notes: int,
+                                   note_value: int) -> None:
+
+    # Create log directory if it does not exist and save expariment parameters
 
     log_dir = f"{base_log_path}/"
     os.makedirs(log_dir, exist_ok=True)
@@ -170,23 +172,24 @@ if __name__ == '__main__':
     N_NOTES = 4
     NOTE_VALUE = 1/8
 
-    EXPERIMENT_NAME = "logs"
+    EXPERIMENT_NAME = "single_param"
 
     # Training parameters
 
-    N_RUNS: int = 3
-    TOTAL_TIMESTEPS: int = 1000
-    CONTROLABLE_PARAMETER: ControlableParameter = ControlableParameter.FREQUENCY
+    N_RUNS: int = 1
+    TOTAL_TIMESTEPS: int = 10000
+    CONTROLABLE_PARAMETER: ControlableParameter = ControlableParameter.LOSS_FACTOR
 
     # Define path for logging experiment
 
-    BASE_LOG_PATH: str = f"{pathlib.Path(__file__).parent.resolve()}/{EXPERIMENT_NAME}"
+    BASE_LOG_PATH: str = f"{pathlib.Path(__file__).parent.resolve()}/logs/{EXPERIMENT_NAME}"
 
-    run_experiment(BASE_LOG_PATH,
-                   N_RUNS,
-                   TOTAL_TIMESTEPS,
-                   CONTROLABLE_PARAMETER,
-                   SR,
-                   BPM,
-                   N_NOTES,
-                   NOTE_VALUE)
+    # Run experiment
+    run_single_param_ks_experiment(BASE_LOG_PATH,
+                                   N_RUNS,
+                                   TOTAL_TIMESTEPS,
+                                   CONTROLABLE_PARAMETER,
+                                   SR,
+                                   BPM,
+                                   N_NOTES,
+                                   NOTE_VALUE)
