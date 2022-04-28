@@ -5,7 +5,7 @@ import pathlib
 import csv
 from random import randint
 from scipy.io.wavfile import write
-from rl_instruments.environments.physical_models import KSSingleParamEnv, ControlableParameter
+from rl_instruments.environments.physical_models import ControlableParameter
 from rl_instruments.environments.physical_models.ks import KSMultiParamEnv
 from rl_instruments.models import WrappedPPO
 from rl_instruments.utils.ks import make_melody, MelodyData, predict_melody
