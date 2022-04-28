@@ -17,35 +17,40 @@ N_FREQUENCIES: int = int(MAX_FREQUENCY-MIN_FREQUENCY) + 1
 
 # Pluck position settings
 DEFAULT_PLUCK_POSITION: float = 0.5
-MIN_PLUCK_POSITION: float = 0.0
+MIN_PLUCK_POSITION: float = 0.1
 MAX_PLUCK_POSITION: float = 0.5
 N_PLUCK_POSITIONS: int = 3
 
 # Loss factor settings
 DEFAULT_LOSS_FACTOR: float = 0.996
-MIN_LOSS_FACTOR: float = 0.93
+MIN_LOSS_FACTOR: float = 0.91
 MAX_LOSS_FACTOR: float = 0.996
 N_LOSS_FACTORS: int = 2
 
 # Amplitude settings
-DEFAULT_AMPLITUDE: float = 1.0
-MIN_AMPLITUDE: float = 1.0
-MAX_AMPLITUDE: float = 2.0
+DEFAULT_AMPLITUDE: float = 0.5
+MIN_AMPLITUDE: float = 0.5
+MAX_AMPLITUDE: float = 1.0
 N_AMPLITUDES: int = 2
 
 
 class ControlableParameter(Enum):
-    FREQUENCY = 'Frequency', DEFAULT_FREQUENCY, MIN_FREQUENCY, MAX_FREQUENCY, N_FREQUENCIES
-    PLUCK_POSITION = 'Pluck position', DEFAULT_PLUCK_POSITION, MIN_PLUCK_POSITION, MAX_PLUCK_POSITION, N_PLUCK_POSITIONS
-    LOSS_FACTOR = 'Loss factor', DEFAULT_LOSS_FACTOR, MIN_LOSS_FACTOR, MAX_LOSS_FACTOR, N_LOSS_FACTORS
-    AMPLITUDE = 'Amplitude', DEFAULT_AMPLITUDE, MIN_AMPLITUDE, MAX_AMPLITUDE, N_AMPLITUDES
+    FREQUENCY = 0, 'Frequency', DEFAULT_FREQUENCY, MIN_FREQUENCY, MAX_FREQUENCY, N_FREQUENCIES
+    PLUCK_POSITION = 1, 'Pluck position', DEFAULT_PLUCK_POSITION, MIN_PLUCK_POSITION, MAX_PLUCK_POSITION, N_PLUCK_POSITIONS
+    LOSS_FACTOR = 2, 'Loss factor', DEFAULT_LOSS_FACTOR, MIN_LOSS_FACTOR, MAX_LOSS_FACTOR, N_LOSS_FACTORS
+    AMPLITUDE = 3, 'Amplitude', DEFAULT_AMPLITUDE, MIN_AMPLITUDE, MAX_AMPLITUDE, N_AMPLITUDES
 
-    def __init__(self, name: str, default_value: float = None, min_value: float = None, max_value: float = None, n: int = None):
+    def __init__(self, parameter_order: int, name: str, default_value: float = None, min_value: float = None, max_value: float = None, n: int = None):
+        self._parameter_order_ = parameter_order
         self._name_ = name
         self._default_value_ = default_value
         self._min_value_ = min_value
         self._max_value_ = max_value
         self._n_ = n
+
+    @property
+    def parameter_order(self):
+        return self._parameter_order_
 
     @property
     def name(self):
@@ -67,6 +72,12 @@ class ControlableParameter(Enum):
     def n(self):
         return self._n_
 
+    def __lt__(self, other):
+        return (self.parameter_order < other.parameter_order)
+
+    def __gt__(self, other):
+        return(self.parameter_order > other.parameter_order)
+
 
 class KSEnv(Env):
 
@@ -78,14 +89,14 @@ class KSEnv(Env):
         self.bpm = target_melody.bpm
         self.note_value = target_melody.note_value
 
-        self.spm = int(self.sr*(4*self.note_value) *
+        self.spn = int(self.sr*(4*self.note_value) *
                        (60/self.bpm))  # Samples per note
 
         self.target_stfts = [self._get_stft(
-            self.target_audio[m*self.spm:(m+1)*self.spm]) for m in range(self.n_notes)]
+            self.target_audio[m*self.spn:(m+1)*self.spn]) for m in range(self.n_notes)]
 
         self.target_envelopes = [self._get_envelope(
-            self.target_audio[m*self.spm:(m+1)*self.spm]) for m in range(self.n_notes)]
+            self.target_audio[m*self.spn:(m+1)*self.spn]) for m in range(self.n_notes)]
 
         low = (np.ones((self.n_notes, 1)) @
                np.array([MIN_FREQUENCY, MIN_PLUCK_POSITION, MIN_LOSS_FACTOR, MIN_AMPLITUDE]).reshape(1, -1)).astype(np.float32)
@@ -114,9 +125,13 @@ class KSEnv(Env):
             self.note_value)
 
         note_audio = audio[self.current_note *
-                           self.spm:(self.current_note+1)*self.spm]
+                           self.spn:(self.current_note+1)*self.spn]
 
         reward = self._get_reward(note_audio)
+
+        if (np.abs(reward) > 1e12):
+            print(reward)
+            print(self.state)
 
         self.current_note += 1
 
@@ -146,9 +161,9 @@ class KSEnv(Env):
 
     def _get_envelope_reward(self, audio: np.ndarray) -> float:
         envelope = self._get_envelope(audio)
-        mse = np.sum(((envelope - self.target_envelopes[self.current_note]) /
-                     MAX_AMPLITUDE)**2)/envelope.size
-        return 1 - mse
+        avg_dev = np.sum(np.abs((envelope - self.target_envelopes[self.current_note]) /
+                                MAX_AMPLITUDE))/envelope.size
+        return 1 - avg_dev
 
     def _get_envelope(self, audio: np.ndarray) -> np.ndarray:
         return sliding_window_view(audio, 100)[::10, :].max(axis=1)
@@ -158,6 +173,14 @@ class KSEnv(Env):
             np.abs(librosa.stft(
                 audio, n_fft=1024, win_length=1024, hop_length=1024)),
             axis=0)
+
+    def _get_controlable_parameter_value(self, action: int, controlable_parameter: ControlableParameter):
+
+        value = controlable_parameter.min_value + action * \
+            (controlable_parameter.max_value -
+             controlable_parameter.min_value)/(controlable_parameter.n-1)
+
+        return value
 
 
 class KSSingleParamEnv(KSEnv):
@@ -169,39 +192,15 @@ class KSSingleParamEnv(KSEnv):
         self._define_action_space(controlable_parameter)
 
     def _define_action_space(self, controlable_parameter: ControlableParameter) -> None:
-        if controlable_parameter is ControlableParameter.FREQUENCY:
-            self.action_space = Discrete(N_FREQUENCIES)
 
-        elif controlable_parameter is ControlableParameter.PLUCK_POSITION:
-            self.action_space = Discrete(N_PLUCK_POSITIONS)
-
-        elif controlable_parameter is ControlableParameter.LOSS_FACTOR:
-            self.action_space = Discrete(N_LOSS_FACTORS)
-
-        elif controlable_parameter is ControlableParameter.AMPLITUDE:
-            self.action_space = Discrete(N_AMPLITUDES)
+        self.action_space = Discrete(controlable_parameter.n)
 
     def _get_parameters(self, action: int) -> 'tuple[float, float, float, float]':
 
-        freq, pluck_position, loss_factor, amplitude = DEFAULT_FREQUENCY, DEFAULT_PLUCK_POSITION, DEFAULT_LOSS_FACTOR, DEFAULT_AMPLITUDE
+        controlable_parameter_value = self._get_controlable_parameter_value(
+            action, self.controlable_parameter)
 
-        controlable_parameter_value = self.controlable_parameter.min_value + action * \
-            (self.controlable_parameter.max_value -
-             self.controlable_parameter.min_value)/(self.controlable_parameter.n-1)
-
-        if self.controlable_parameter is ControlableParameter.FREQUENCY:
-            freq = controlable_parameter_value
-
-        elif self.controlable_parameter is ControlableParameter.PLUCK_POSITION:
-            pluck_position = controlable_parameter_value
-
-        elif self.controlable_parameter is ControlableParameter.LOSS_FACTOR:
-            loss_factor = controlable_parameter_value
-
-        elif self.controlable_parameter is ControlableParameter.AMPLITUDE:
-            amplitude = controlable_parameter_value
-
-        return freq, pluck_position, loss_factor, amplitude
+        return [controlable_parameter_value if cp is self.controlable_parameter else cp.default_value for cp in sorted(ControlableParameter)]
 
 
 class KSMultiParamEnv(KSEnv):
@@ -215,48 +214,28 @@ class KSMultiParamEnv(KSEnv):
         self.controlable_parameters = controlable_parameters
         self._define_action_space(controlable_parameters)
 
-    def _define_action_space(self, controlable_parameters: str) -> None:
+    def _define_action_space(self, controlable_parameters: 'list[ControlableParameter]') -> None:
 
-        action_space_array = []
-
-        if ControlableParameter.FREQUENCY in controlable_parameters:
-            action_space_array.append(N_FREQUENCIES)
-
-        if ControlableParameter.PLUCK_POSITION in controlable_parameters:
-            action_space_array.append(N_PLUCK_POSITIONS)
-
-        if ControlableParameter.LOSS_FACTOR in controlable_parameters:
-            action_space_array.append(N_LOSS_FACTORS)
-
-        if ControlableParameter.AMPLITUDE in controlable_parameters:
-            action_space_array.append(N_AMPLITUDES)
+        action_space_array = [cp.n for cp in sorted(controlable_parameters)]
 
         self.action_space = MultiDiscrete(action_space_array)
 
     def _get_parameters(self, action: 'list[int]') -> 'tuple[float, float, float, float]':
 
-        freq, pluck_position, loss_factor, amplitude = DEFAULT_FREQUENCY, DEFAULT_PLUCK_POSITION, DEFAULT_LOSS_FACTOR, DEFAULT_AMPLITUDE
+        parameters = []
 
         action_idx = 0
 
-        if ControlableParameter.FREQUENCY in self.controlable_parameters:
-            freq = MIN_FREQUENCY + action[action_idx] * \
-                (MAX_FREQUENCY - MIN_FREQUENCY)/(N_FREQUENCIES - 1)
-            action_idx += 1
+        for cp in sorted(ControlableParameter):
+            if cp in self.controlable_parameters:
+                used_action = action[action_idx]
 
-        if ControlableParameter.PLUCK_POSITION in self.controlable_parameters:
-            pluck_position = MIN_PLUCK_POSITION + action[action_idx] * \
-                (MAX_PLUCK_POSITION - MIN_PLUCK_POSITION)/(N_PLUCK_POSITIONS - 1)
-            action_idx += 1
+                param = self._get_controlable_parameter_value(
+                    action[action_idx], cp)
+                action_idx += 1
+            else:
+                param = cp.default_value
 
-        if ControlableParameter.LOSS_FACTOR in self.controlable_parameters:
-            loss_factor = MIN_LOSS_FACTOR + action[action_idx] * \
-                (MAX_LOSS_FACTOR - MIN_LOSS_FACTOR)/(N_LOSS_FACTORS - 1)
-            action_idx += 1
+            parameters.append(param)
 
-        if ControlableParameter.AMPLITUDE in self.controlable_parameters:
-            amplitude = MIN_AMPLITUDE + action[action_idx] * \
-                (MAX_AMPLITUDE - MIN_AMPLITUDE)/(N_AMPLITUDES - 1)
-            action_idx += 1
-
-        return freq, pluck_position, loss_factor, amplitude
+        return parameters
