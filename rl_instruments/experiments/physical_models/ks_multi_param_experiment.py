@@ -1,9 +1,9 @@
 from fractions import Fraction
 import os
-import numpy as np
 import pathlib
 import csv
 from random import randint
+import numpy as np
 from scipy.io.wavfile import write
 from rl_instruments.environments.physical_models import ControlableParameter
 from rl_instruments.environments.physical_models.ks import KSMultiParamEnv
@@ -17,11 +17,8 @@ def create_target_parameters(controlable_parameters: 'set[ControlableParameter]'
         raise ValueError
 
     n_notes = len(list(controlable_arrays.values())[0])
-    target_params = []
-
-    for param in sorted(ControlableParameter):
-        target_params.append(controlable_arrays[param] if param in controlable_parameters else [
-            param.default_value]*n_notes)
+    target_params = [controlable_arrays[param] if param in controlable_parameters else [
+        param.default_value]*n_notes for param in sorted(ControlableParameter)]
 
     return target_params
 
@@ -187,7 +184,10 @@ if __name__ == '__main__':
     N_RUNS: int = 1
     TOTAL_TIMESTEPS: int = 150000
     CONTROLABLE_PARAMETERS: 'set[ControlableParameter]' = {
-        ControlableParameter.FREQUENCY, ControlableParameter.PLUCK_POSITION, ControlableParameter.LOSS_FACTOR, ControlableParameter.AMPLITUDE}
+        ControlableParameter.FREQUENCY,
+        ControlableParameter.PLUCK_POSITION,
+        ControlableParameter.LOSS_FACTOR,
+        ControlableParameter.AMPLITUDE}
 
     # Define path for logging experiment
 

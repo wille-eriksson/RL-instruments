@@ -1,9 +1,9 @@
 from fractions import Fraction
 import os
-import numpy as np
 import pathlib
 import csv
 from random import randint
+import numpy as np
 from scipy.io.wavfile import write
 from rl_instruments.environments.physical_models import KSSingleParamEnv, ControlableParameter
 from rl_instruments.models import WrappedPPO
@@ -13,11 +13,8 @@ from rl_instruments.utils.ks import make_melody, MelodyData, predict_melody
 def create_target_parameters(controlable_parameter: ControlableParameter, controlable_array: 'list[str]') -> 'tuple[list[float], list[float], list[float], list[float]]':
 
     n_notes = len(controlable_array)
-    target_params = []
-
-    for param in sorted(ControlableParameter):
-        target_params.append(controlable_array if controlable_parameter is param else [
-            param.default_value]*n_notes)
+    target_params = [controlable_array if controlable_parameter is param else [
+        param.default_value]*n_notes for param in sorted(ControlableParameter)]
 
     return target_params
 
@@ -96,7 +93,11 @@ def save_prediction(log_dir: str, predicted_audio: np.ndarray, sr: int, predicte
         writer = csv.writer(f)
         writer.writerow(header)
 
-        for f, pp, lf, a, r in zip(predicted_parameters[:, 0], predicted_parameters[:, 1], predicted_parameters[:, 2], predicted_parameters[:, 3], rewards):
+        for f, pp, lf, a, r in zip(predicted_parameters[:, 0],
+                                   predicted_parameters[:, 1],
+                                   predicted_parameters[:, 2],
+                                   predicted_parameters[:, 3],
+                                   rewards):
             writer.writerow([f, pp, lf, a, r])
 
     audio_filename = log_dir + "/predicted_audio.wav"
