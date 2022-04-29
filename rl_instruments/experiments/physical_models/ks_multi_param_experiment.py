@@ -11,7 +11,9 @@ from rl_instruments.models import WrappedPPO
 from rl_instruments.utils.ks import make_melody, MelodyData, predict_melody
 
 
-def create_target_parameters(controlable_parameters: 'set[ControlableParameter]', controlable_arrays: 'dict[ControlableParameter,list[float]]') -> 'tuple[list[float], list[float], list[float], list[float]]':
+def create_target_parameters(controlable_parameters: 'set[ControlableParameter]',
+                             controlable_arrays: 'dict[ControlableParameter,list[float]]') -> \
+        'tuple[list[float], list[float], list[float], list[float]]':
 
     if len(controlable_arrays) == 0:
         raise ValueError
@@ -38,7 +40,8 @@ def create_target_melody(frequencies: 'list[float]',
         target_audio, sr, bpm, len(frequencies), note_value)
 
 
-def generate_random_parameters(n_notes: int, controlable_parameter: ControlableParameter) -> 'list[int]':
+def generate_random_parameters(n_notes: int,
+                               controlable_parameter: ControlableParameter) -> 'list[int]':
 
     min_value = controlable_parameter.min_value
     max_value = controlable_parameter.max_value
@@ -87,7 +90,11 @@ def save_target_parameters(log_dir: str,
             writer.writerow([f, pp, lf, a])
 
 
-def save_prediction(log_dir: str, predicted_audio: np.ndarray, sr: int, predicted_parameters: np.ndarray, rewards: 'list[float]') -> None:
+def save_prediction(log_dir: str,
+                    predicted_audio: np.ndarray,
+                    sr: int,
+                    predicted_parameters: np.ndarray,
+                    rewards: 'list[float]') -> None:
     header = ['Frequency', 'Pluck position',
               'Loss factor', 'Amplitude', 'Reward']
 
@@ -97,7 +104,11 @@ def save_prediction(log_dir: str, predicted_audio: np.ndarray, sr: int, predicte
         writer = csv.writer(f)
         writer.writerow(header)
 
-        for f, pp, lf, a, r in zip(predicted_parameters[:, 0], predicted_parameters[:, 1], predicted_parameters[:, 2], predicted_parameters[:, 3], rewards):
+        for f, pp, lf, a, r in zip(predicted_parameters[:, 0],
+                                   predicted_parameters[:, 1],
+                                   predicted_parameters[:, 2],
+                                   predicted_parameters[:, 3],
+                                   rewards):
             writer.writerow([f, pp, lf, a, r])
 
     audio_filename = log_dir + "/predicted_audio.wav"

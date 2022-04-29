@@ -1,10 +1,9 @@
 from fractions import Fraction
 import os
-import numpy as np
 import pathlib
 import csv
 from random import randint
-from rl_instruments.environments.piano_rolls.audio_target import AudioTargetEnv
+import numpy as np
 from rl_instruments.environments.piano_rolls.velocity import VelocitytEnv
 from rl_instruments.models import WrappedPPO
 from rl_instruments.utils.piano import PianoRollManager, predict_piano_roll
@@ -90,8 +89,6 @@ def run_audio_target_experiment(base_log_path: str,
         target_piano_roll = generate_random_piano_roll(
             n_notes, n_keys, n_velocities)
         save_piano_roll(log_dir, "target_piano_roll", target_piano_roll)
-
-        print(target_piano_roll)
 
         # Synthesize audio
         target_audio = PianoRollManager(

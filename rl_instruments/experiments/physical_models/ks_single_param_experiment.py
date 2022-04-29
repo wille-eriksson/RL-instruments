@@ -1,4 +1,5 @@
 from fractions import Fraction
+from typing import Tuple, List
 import os
 import pathlib
 import csv
@@ -10,7 +11,11 @@ from rl_instruments.models import WrappedPPO
 from rl_instruments.utils.ks import make_melody, MelodyData, predict_melody
 
 
-def create_target_parameters(controlable_parameter: ControlableParameter, controlable_array: 'list[str]') -> 'tuple[list[float], list[float], list[float], list[float]]':
+def create_target_parameters(controlable_parameter: ControlableParameter,
+                             controlable_array: List[str]) -> Tuple[List[float],
+                                                                    List[float],
+                                                                    List[float],
+                                                                    List[float]]:
 
     n_notes = len(controlable_array)
     target_params = [controlable_array if controlable_parameter is param else [
@@ -19,10 +24,10 @@ def create_target_parameters(controlable_parameter: ControlableParameter, contro
     return target_params
 
 
-def create_target_melody(frequencies: 'list[float]',
-                         pluck_positions: 'list[float]',
-                         loss_factors: 'list[float]',
-                         amplitudes: 'list[float]',
+def create_target_melody(frequencies: List[float],
+                         pluck_positions: List[float],
+                         loss_factors: List[float],
+                         amplitudes: List[float],
                          sr: int,
                          bpm: int,
                          note_value: int) -> MelodyData:
@@ -34,7 +39,7 @@ def create_target_melody(frequencies: 'list[float]',
         target_audio, sr, bpm, len(frequencies), note_value)
 
 
-def generate_random_parameters(n_notes: int, controlable_parameter: ControlableParameter) -> 'list[int]':
+def generate_random_parameters(n_notes: int, controlable_parameter: ControlableParameter) -> List[int]:
 
     min_value = controlable_parameter.min_value
     max_value = controlable_parameter.max_value
@@ -66,10 +71,10 @@ def save_experiment_parameters(log_dir: str,
 
 
 def save_target_parameters(log_dir: str,
-                           frequencies: 'list[float]',
-                           pluck_positions: 'list[float]',
-                           loss_factors: 'list[float]',
-                           amplitudes: 'list[float]') -> None:
+                           frequencies: List[float],
+                           pluck_positions: List[float],
+                           loss_factors: List[float],
+                           amplitudes: List[float]) -> None:
 
     header = ['Frequency', 'Pluck position', 'Loss factor', 'Amplitude']
 
@@ -83,7 +88,7 @@ def save_target_parameters(log_dir: str,
             writer.writerow([f, pp, lf, a])
 
 
-def save_prediction(log_dir: str, predicted_audio: np.ndarray, sr: int, predicted_parameters: np.ndarray, rewards: 'list[float]') -> None:
+def save_prediction(log_dir: str, predicted_audio: np.ndarray, sr: int, predicted_parameters: np.ndarray, rewards: List[float]) -> None:
     header = ['Frequency', 'Pluck position',
               'Loss factor', 'Amplitude', 'Reward']
 

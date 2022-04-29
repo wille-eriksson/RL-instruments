@@ -1,9 +1,9 @@
 from fractions import Fraction
 import os
-import numpy as np
 import pathlib
 import csv
 from random import randint
+import numpy as np
 from rl_instruments.environments.piano_rolls.audio_target import AudioTargetEnv
 from rl_instruments.models import WrappedPPO
 from rl_instruments.utils.piano import PianoRollManager, predict_piano_roll

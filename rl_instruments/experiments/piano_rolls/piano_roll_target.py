@@ -1,8 +1,8 @@
 import os
-import numpy as np
 import pathlib
 import csv
 from random import randint
+import numpy as np
 from rl_instruments.environments.piano_rolls.piano_roll_target import PianoRollTargetEnv
 from rl_instruments.models import WrappedPPO
 from rl_instruments.utils.piano import predict_piano_roll
@@ -70,8 +70,6 @@ def run_piano_roll_target_experiment(base_log_path: str,
         # Generate a random piano roll
         target_piano_roll = generate_random_piano_roll(n_notes, n_keys)
         save_piano_roll(log_dir, "target_piano_roll", target_piano_roll)
-
-        print(target_piano_roll)
 
         # Create environment
         env = PianoRollTargetEnv(target_piano_roll)
