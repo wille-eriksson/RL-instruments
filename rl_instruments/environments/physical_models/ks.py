@@ -1,7 +1,8 @@
-import numpy as np
-import librosa
+from abc import abstractmethod
 from typing import Union
 from enum import Enum
+import numpy as np
+import librosa
 from numpy.lib.stride_tricks import sliding_window_view
 from gym import Env
 from gym.spaces import Box, MultiDiscrete, Discrete
@@ -35,14 +36,18 @@ N_AMPLITUDES: int = 2
 
 
 class ControlableParameter(Enum):
-    FREQUENCY = 0, 'Frequency', DEFAULT_FREQUENCY, MIN_FREQUENCY, MAX_FREQUENCY, N_FREQUENCIES
-    PLUCK_POSITION = 1, 'Pluck position', DEFAULT_PLUCK_POSITION, MIN_PLUCK_POSITION, MAX_PLUCK_POSITION, N_PLUCK_POSITIONS
-    LOSS_FACTOR = 2, 'Loss factor', DEFAULT_LOSS_FACTOR, MIN_LOSS_FACTOR, MAX_LOSS_FACTOR, N_LOSS_FACTORS
-    AMPLITUDE = 3, 'Amplitude', DEFAULT_AMPLITUDE, MIN_AMPLITUDE, MAX_AMPLITUDE, N_AMPLITUDES
+    FREQUENCY = 0, DEFAULT_FREQUENCY, MIN_FREQUENCY, MAX_FREQUENCY, N_FREQUENCIES
+    PLUCK_POSITION = 1, DEFAULT_PLUCK_POSITION, MIN_PLUCK_POSITION, MAX_PLUCK_POSITION, N_PLUCK_POSITIONS
+    LOSS_FACTOR = 2,  DEFAULT_LOSS_FACTOR, MIN_LOSS_FACTOR, MAX_LOSS_FACTOR, N_LOSS_FACTORS
+    AMPLITUDE = 3, DEFAULT_AMPLITUDE, MIN_AMPLITUDE, MAX_AMPLITUDE, N_AMPLITUDES
 
-    def __init__(self, parameter_order: int, name: str, default_value: float = None, min_value: float = None, max_value: float = None, n: int = None):
+    def __init__(self,
+                 parameter_order: int,
+                 default_value: float = None,
+                 min_value: float = None,
+                 max_value: float = None,
+                 n: int = None):
         self._parameter_order_ = parameter_order
-        self._name_ = name
         self._default_value_ = default_value
         self._min_value_ = min_value
         self._max_value_ = max_value
@@ -51,10 +56,6 @@ class ControlableParameter(Enum):
     @property
     def parameter_order(self):
         return self._parameter_order_
-
-    @property
-    def name(self):
-        return self._name_
 
     @property
     def default_value(self):
@@ -73,10 +74,10 @@ class ControlableParameter(Enum):
         return self._n_
 
     def __lt__(self, other):
-        return (self.parameter_order < other.parameter_order)
+        return self.parameter_order < other.parameter_order
 
     def __gt__(self, other):
-        return(self.parameter_order > other.parameter_order)
+        return self.parameter_order > other.parameter_order
 
 
 class KSEnv(Env):
@@ -99,9 +100,13 @@ class KSEnv(Env):
             self.target_audio[m*self.spn:(m+1)*self.spn]) for m in range(self.n_notes)]
 
         low = (np.ones((self.n_notes, 1)) @
-               np.array([MIN_FREQUENCY, MIN_PLUCK_POSITION, MIN_LOSS_FACTOR, MIN_AMPLITUDE]).reshape(1, -1)).astype(np.float32)
+               np.array([MIN_FREQUENCY, MIN_PLUCK_POSITION,
+                        MIN_LOSS_FACTOR, MIN_AMPLITUDE])
+               .reshape(1, -1)).astype(np.float32)
         high = (np.ones((self.n_notes, 1)) @
-                np.array([MAX_FREQUENCY, MAX_PLUCK_POSITION, MAX_LOSS_FACTOR, MAX_AMPLITUDE]).reshape(1, -1)).astype(np.float32)
+                np.array([MAX_FREQUENCY, MAX_PLUCK_POSITION,
+                         MAX_LOSS_FACTOR, MAX_AMPLITUDE])
+                .reshape(1, -1)).astype(np.float32)
 
         self.observation_space = Box(low=low, high=high)
 
@@ -128,10 +133,6 @@ class KSEnv(Env):
                            self.spn:(self.current_note+1)*self.spn]
 
         reward = self._get_reward(note_audio)
-
-        if (np.abs(reward) > 1e12):
-            print(reward)
-            print(self.state)
 
         self.current_note += 1
 
@@ -165,6 +166,10 @@ class KSEnv(Env):
                                 MAX_AMPLITUDE))/envelope.size
         return 1 - avg_dev
 
+    @abstractmethod
+    def _get_parameters(self, action):
+        pass
+
     def _get_envelope(self, audio: np.ndarray) -> np.ndarray:
         return sliding_window_view(audio, 100)[::10, :].max(axis=1)
 
@@ -174,7 +179,9 @@ class KSEnv(Env):
                 audio, n_fft=1024, win_length=1024, hop_length=1024)),
             axis=0)
 
-    def _get_controlable_parameter_value(self, action: int, controlable_parameter: ControlableParameter):
+    def _get_controlable_parameter_value(self,
+                                         action: int,
+                                         controlable_parameter: ControlableParameter):
 
         value = controlable_parameter.min_value + action * \
             (controlable_parameter.max_value -
@@ -184,7 +191,9 @@ class KSEnv(Env):
 
 
 class KSSingleParamEnv(KSEnv):
-    def __init__(self, target_melody: MelodyData, controlable_parameter: ControlableParameter) -> None:
+    def __init__(self,
+                 target_melody: MelodyData,
+                 controlable_parameter: ControlableParameter) -> None:
 
         super().__init__(target_melody)
 
@@ -200,11 +209,14 @@ class KSSingleParamEnv(KSEnv):
         controlable_parameter_value = self._get_controlable_parameter_value(
             action, self.controlable_parameter)
 
-        return [controlable_parameter_value if cp is self.controlable_parameter else cp.default_value for cp in sorted(ControlableParameter)]
+        return [controlable_parameter_value if cp is self.controlable_parameter
+                else cp.default_value for cp in sorted(ControlableParameter)]
 
 
 class KSMultiParamEnv(KSEnv):
-    def __init__(self, target_melody: MelodyData, controlable_parameters: 'set[ControlableParameter]') -> None:
+    def __init__(self,
+                 target_melody: MelodyData,
+                 controlable_parameters: 'set[ControlableParameter]') -> None:
 
         if len(controlable_parameters) == 0:
             raise ValueError
@@ -228,8 +240,6 @@ class KSMultiParamEnv(KSEnv):
 
         for cp in sorted(ControlableParameter):
             if cp in self.controlable_parameters:
-                used_action = action[action_idx]
-
                 param = self._get_controlable_parameter_value(
                     action[action_idx], cp)
                 action_idx += 1
