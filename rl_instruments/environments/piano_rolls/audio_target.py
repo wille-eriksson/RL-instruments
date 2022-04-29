@@ -13,7 +13,12 @@ class AudioTargetEnv(Env):
     :param 2D np.array piano_roll: The ground truth that an agent will try to learn.
     """
 
-    def __init__(self, audio: np.ndarray, sr: int, bpm: int, note_value: float, n_notes: int, n_keys: int = 12):
+    def __init__(self, audio: np.ndarray,
+                 sr: int,
+                 bpm: int,
+                 note_value: float,
+                 n_notes: int,
+                 n_keys: int = 12):
         self.target_audio = audio
         self.sr = sr
         self.bpm = bpm

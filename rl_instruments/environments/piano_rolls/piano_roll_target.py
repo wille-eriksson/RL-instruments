@@ -39,7 +39,7 @@ class PianoRollTargetEnv(Env):
 
         return self.state.flatten(), reward, done, info
 
-    def render(self) -> None:
+    def render(self, mode="human") -> None:
         pass
 
     def reset(self) -> np.ndarray:
