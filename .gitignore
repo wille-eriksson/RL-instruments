@@ -140,3 +140,6 @@ dmypy.json
 *.wav
 *.npy
 best_model.zip
+
+# Results
+*.png
