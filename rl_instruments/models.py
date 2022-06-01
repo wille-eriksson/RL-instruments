@@ -1,6 +1,7 @@
+from abc import abstractmethod
 import os
 from os.path import exists
-from typing import Union
+from typing import Tuple, Union
 from gym import Env
 import numpy as np
 from stable_baselines3 import PPO, DQN
@@ -40,7 +41,8 @@ class SaveOnBestTrainingRewardCallback(BaseCallback):
                 if self.verbose > 0:
                     print(f"Num timesteps: {self.num_timesteps}")
                     print(
-                        f"Best mean reward: {self.best_mean_reward:.2f} - Last mean reward per episode: {mean_reward:.2f}")
+                        f"Best mean reward: {self.best_mean_reward: .2f}" +
+                        f" - Last mean reward per episode: {mean_reward: .2f}")
 
                 # New best model, you could save the agent here
                 if mean_reward > self.best_mean_reward:
@@ -54,16 +56,28 @@ class SaveOnBestTrainingRewardCallback(BaseCallback):
 
 
 class WrappedModel:
-    def __init__(self, algorithm: Union[PPO, DQN], env: Env, log_dir: str, policy="MlpPolicy"):
+    def __init__(self, algorithm: Union[PPO, DQN],
+                 env: Env,
+                 log_dir: str,
+                 policy: str = "MlpPolicy",
+                 info_keywords: Tuple[str] = tuple(),
+                 seed=None,
+                 load_best=True):
         self.log_dir = log_dir
         os.makedirs(self.log_dir, exist_ok=True)
 
-        env = Monitor(env, self.log_dir)
+        env = Monitor(env, self.log_dir, info_keywords=info_keywords)
         self.algorithm = algorithm
-        self.model = algorithm(policy, env, verbose=1)
+        if algorithm is PPO:
+            self.model = algorithm(policy, env, verbose=1, seed=seed)
+        else:
+            self.model = algorithm(
+                policy, env, learning_rate=3e-4, learning_starts=0, verbose=1)
 
         logger = configure(log_dir, ["csv"])
         self.model.set_logger(logger)
+
+        self.load_best = load_best
 
     def learn(self, total_timesteps: int, check_freq: int = 1000) -> None:
         callback = SaveOnBestTrainingRewardCallback(
@@ -71,7 +85,8 @@ class WrappedModel:
 
         self.model.learn(total_timesteps=total_timesteps,
                          callback=callback)
-        self.load_best_model()
+        if self.load_best:
+            self.load_best_model()
 
     def load_best_model(self) -> None:
         path = self.log_dir + "best_model.zip"
@@ -87,10 +102,28 @@ class WrappedModel:
 
 
 class WrappedPPO(WrappedModel):
-    def __init__(self, env: Env, log_dir: str, policy="MlpPolicy") -> None:
-        super().__init__(PPO, env, log_dir, policy)
+    def __init__(self,
+                 env: Env,
+                 log_dir: str,
+                 policy="MlpPolicy",
+                 info_keywords: Tuple[str] = tuple(),
+                 seed=None,
+                 load_best=True) -> None:
+        super().__init__(PPO, env, log_dir, policy, info_keywords, seed, load_best)
+
+    @property
+    @abstractmethod
+    def name(self) -> str:
+        return "PPO"
 
 
-class WrappedDQN:
-    def __init__(self, env: Env, log_dir: str, policy="MlpPolicy") -> None:
-        super().__init__(DQN, env, log_dir, policy)
+class WrappedDQN(WrappedModel):
+    def __init__(self,
+                 env: Env,
+                 log_dir: str,
+                 policy="MlpPolicy",
+                 info_keywords: Tuple[str] = tuple()) -> None:
+        super().__init__(DQN, env, log_dir, policy, info_keywords)
+
+    def get_name(self) -> str:
+        return "DQN"
