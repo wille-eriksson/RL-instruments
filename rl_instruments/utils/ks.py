@@ -1,23 +1,23 @@
-import numpy as np
 import random
+from typing import List, Tuple
 from dataclasses import dataclass
-from rl_instruments.models import WrappedModel
+import numpy as np
 from gym import Env
 
 # Modified version of https://inst.eecs.berkeley.edu/~cs61a/fa12/labs/lab05/guitar.py
 
 
-"""A Python implementation of the Karplus-Strong algorithm"""
-
-
-def create_pluck(n: int, pluck_position: float = 0.5, amplitude: float = 1.0) -> 'list[float]':
+def create_pluck(n: int, pluck_position: float = 0.5, amplitude: float = 1.0) -> List[float]:
     """Create a list of n random values between -0.5 and 0.5 representing
     initial string excitation (white noise). Apply comb filter to simulate pluck position.
     """
     # BEGIN SOLUTION
-    random.seed(2)
+    state = random.getstate()
 
+    random.seed(2)
     noise = [amplitude*(random.random()-0.5) for _ in range(n)]
+
+    random.setstate(state)
 
     sample_pos = int(pluck_position*n)
 
@@ -60,25 +60,25 @@ def synthesize_string(frequency: int,
     return samples[:n_samples]
 
 
-def make_melody(freqs: 'list[int]',
-                pluck_positions: 'list[float]',
-                loss_factors: 'list[float]',
-                amplitudes: 'list[float]',
+def make_melody(freqs: List[int],
+                pluck_positions: List[float],
+                loss_factors: List[float],
+                amplitudes: List[float],
                 bpm: int,
-                sr: int,
+                sample_rate: int,
                 note_value: float) -> np.ndarray:
 
     # Note length in seconds
     note_length = (60/bpm)*(4*note_value)
 
     # Note samples
-    n_samples = int(sr*note_length)
+    n_samples = int(sample_rate*note_length)
 
-    return np.concatenate([synthesize_string(freq, pluck_position, loss_factor, amp, n_samples, sr)
+    return np.concatenate([synthesize_string(freq, pluck_position, loss_factor, amp, n_samples, sample_rate)
                            for freq, pluck_position, loss_factor, amp in zip(freqs, pluck_positions, loss_factors, amplitudes)])
 
 
-def predict_melody(env: Env, model: WrappedModel) -> 'tuple[np.ndarray,list[float],np.ndarray]':
+def predict_melody(env: Env, model) -> Tuple[np.ndarray, List[float], np.ndarray]:
     obs = env.reset()
     done = False
     rewards = []
@@ -87,14 +87,14 @@ def predict_melody(env: Env, model: WrappedModel) -> 'tuple[np.ndarray,list[floa
         obs, reward, done, _ = env.step(action)
         rewards.append(reward)
     predicted_audio = make_melody(
-        obs[:, 0], obs[:, 1], obs[:, 2], obs[:, 3], env.bpm, env.sr, env.note_value)
+        obs[:, 0], obs[:, 1], obs[:, 2], obs[:, 3], env.bpm, env.sample_rate, env.note_value)
     return predicted_audio, rewards, obs
 
 
 @dataclass
 class MelodyData:
     audio: np.ndarray
-    sr: int
+    sample_rate: int
     bpm: int
     n_notes: int
     note_value: int

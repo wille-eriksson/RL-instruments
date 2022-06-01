@@ -1,18 +1,23 @@
+from typing import List, Tuple
 from gym import Env
 import matplotlib.pyplot as plt
 import numpy as np
 from sklearn.preprocessing import normalize
 from pretty_midi import PrettyMIDI, Instrument, Note
 import librosa
-from rl_instruments.models import WrappedModel
 
 
 class PianoRollManager():
 
-    def __init__(self, piano_roll: np.ndarray, bpm: int, note_value: float, sr: int = 8092, base_note_number: int = 60) -> None:
+    def __init__(self,
+                 piano_roll: np.ndarray,
+                 bpm: int,
+                 note_value: float,
+                 sample_rate: int = 8092,
+                 base_note_number: int = 60) -> None:
         self.piano_roll = piano_roll
         self.bpm = bpm
-        self.sr = sr
+        self.sample_rate = sample_rate
         self.base_note_number = base_note_number
         self.note_value = note_value
 
@@ -30,9 +35,11 @@ class PianoRollManager():
         return self.audio
 
     def _synthesize(self) -> np.ndarray:
-        audio = self.midi.synthesize(self.sr) * (self.piano_roll.max()/100)
+        audio = self.midi.synthesize(
+            self.sample_rate) * (self.piano_roll.max()/100)
         note_length = (60/self.bpm)*(4*self.note_value)
-        n_samples = int(self.sr * note_length)*self.piano_roll.shape[1]
+        n_samples = int(self.sample_rate * note_length) * \
+            self.piano_roll.shape[1]
         return audio[:n_samples]
 
     def _create_midi_from_piano_roll(self) -> PrettyMIDI:
@@ -45,14 +52,14 @@ class PianoRollManager():
             note_number = self._get_note_number(note)
             notes = self._get_notes(note_number, note_roll)
 
-            for note in notes:
-                instrument.notes.append(note)
+            for _note in notes:
+                instrument.notes.append(_note)
 
         midi_data.instruments.append(instrument)
 
         return midi_data
 
-    def _get_notes(self, note_number: int, note_roll: np.ndarray) -> 'list[Note]':
+    def _get_notes(self, note_number: int, note_roll: np.ndarray) -> List[Note]:
         note_length = (60/self.bpm)*(4*self.note_value)
         notes = []
 
@@ -78,13 +85,13 @@ def plot_piano_roll(piano_roll: np.ndarray, title: str = "Piano roll") -> None:
     notes = ["C", "C#", "D", "C#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
     plt.pcolormesh(piano_roll)
     plt.yticks(np.arange(12)+0.5, notes)
-    plt.ylabel("Note")
-    plt.xlabel("Bar")
+    plt.ylabel("Pitch class")
+    plt.xlabel("Note")
     plt.title(title)
     plt.show()
 
 
-def predict_piano_roll(model: WrappedModel, env: Env) -> 'tuple[np.ndarray,list[float]]':
+def predict_piano_roll(model, env: Env) -> Tuple[np.ndarray, List[float]]:
     obs = env.reset()
     done = False
     rewards = []
