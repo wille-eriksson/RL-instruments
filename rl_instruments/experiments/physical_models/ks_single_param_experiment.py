@@ -7,7 +7,7 @@ from random import randint
 import numpy as np
 from scipy.io.wavfile import write
 from rl_instruments.environments.physical_models import KSSingleParamEnv, ControlableParameter
-from rl_instruments.models import WrappedPPO
+from rl_instruments.models import WrappedDQN, WrappedPPO
 from rl_instruments.utils.ks import make_melody, MelodyData, predict_melody
 
 
@@ -28,15 +28,15 @@ def create_target_melody(frequencies: List[float],
                          pluck_positions: List[float],
                          loss_factors: List[float],
                          amplitudes: List[float],
-                         sr: int,
+                         sample_rate: int,
                          bpm: int,
                          note_value: int) -> MelodyData:
 
     target_audio = make_melody(frequencies, pluck_positions, loss_factors,
-                               amplitudes, bpm, sr, note_value)
+                               amplitudes, bpm, sample_rate, note_value)
 
     return MelodyData(
-        target_audio, sr, bpm, len(frequencies), note_value)
+        target_audio, sample_rate, bpm, len(frequencies), note_value)
 
 
 def generate_random_parameters(n_notes: int, controlable_parameter: ControlableParameter) -> List[int]:
@@ -52,7 +52,7 @@ def save_experiment_parameters(log_dir: str,
                                n_runs: int,
                                total_timesteps: int,
                                controlable_parameter: ControlableParameter,
-                               sr: int,
+                               sample_rate: int,
                                bpm: int,
                                n_notes: int,
                                note_value: int) -> None:
@@ -60,7 +60,7 @@ def save_experiment_parameters(log_dir: str,
     header = ['Number of runs', 'Total timesteps', 'Controlable parameter',
               'Sample rate', 'BPM', "Number of notes", 'Note value']
     data = [n_runs, total_timesteps,  controlable_parameter.name,
-            sr, bpm,  n_notes,  str(Fraction(note_value))]
+            sample_rate, bpm,  n_notes,  str(Fraction(note_value))]
 
     filename = log_dir + "/experiment_parameters.csv"
 
@@ -88,7 +88,7 @@ def save_target_parameters(log_dir: str,
             writer.writerow([f, pp, lf, a])
 
 
-def save_prediction(log_dir: str, predicted_audio: np.ndarray, sr: int, predicted_parameters: np.ndarray, rewards: List[float]) -> None:
+def save_prediction(log_dir: str, predicted_audio: np.ndarray, sample_rate: int, predicted_parameters: np.ndarray, rewards: List[float]) -> None:
     header = ['Frequency', 'Pluck position',
               'Loss factor', 'Amplitude', 'Reward']
 
@@ -106,14 +106,15 @@ def save_prediction(log_dir: str, predicted_audio: np.ndarray, sr: int, predicte
             writer.writerow([f, pp, lf, a, r])
 
     audio_filename = log_dir + "/predicted_audio.wav"
-    write(audio_filename, sr, predicted_audio)
+    write(audio_filename, sample_rate, predicted_audio)
 
 
-def run_single_param_ks_experiment(base_log_path: str,
+def run_single_param_ks_experiment(algorithm,
+                                   base_log_path: str,
                                    n_runs: int,
                                    total_timesteps: int,
                                    controlable_parameter: ControlableParameter,
-                                   sr: int,
+                                   sample_rate: int,
                                    bpm: int,
                                    n_notes: int,
                                    note_value: int) -> None:
@@ -127,7 +128,7 @@ def run_single_param_ks_experiment(base_log_path: str,
                                n_runs,
                                total_timesteps,
                                controlable_parameter,
-                               sr,
+                               sample_rate,
                                bpm,
                                n_notes,
                                note_value)
@@ -135,7 +136,7 @@ def run_single_param_ks_experiment(base_log_path: str,
     for run in range(n_runs):
         # Create path to log directory
 
-        log_dir = f"{base_log_path}/{run}/"
+        log_dir = f"{base_log_path}/{algorithm.__name__}/runs/{run}/"
         os.makedirs(log_dir, exist_ok=True)
 
         # Generate array of controlable parameters
@@ -154,18 +155,19 @@ def run_single_param_ks_experiment(base_log_path: str,
 
         # Create target melody
         target_melody = create_target_melody(
-            frequencies, pluck_positions, loss_factors, amplitudes, sr, bpm, note_value)
+            frequencies, pluck_positions, loss_factors, amplitudes, sample_rate, bpm, note_value)
 
         # Create environment and train model
         env = KSSingleParamEnv(target_melody, CONTROLABLE_PARAMETER)
 
-        model = WrappedPPO(env, log_dir)
+        model = algorithm(env, log_dir, info_keywords=(
+            "frequency_reward", "envelope_reward"))
         model.learn(total_timesteps)
 
         # Make and save predictions
         predicted_audio, rewards, predicted_parameters = predict_melody(
             env, model)
-        save_prediction(log_dir, predicted_audio, sr,
+        save_prediction(log_dir, predicted_audio, sample_rate,
                         predicted_parameters, rewards)
 
 
@@ -175,27 +177,36 @@ if __name__ == '__main__':
 
     SR = 8000
     BPM = 120
-    N_NOTES = 4
+    N_NOTES_ARRAY = [4, 8]
     NOTE_VALUE = 1/8
-
-    EXPERIMENT_NAME = "single_param"
 
     # Training parameters
 
-    N_RUNS: int = 1
-    TOTAL_TIMESTEPS: int = 10000
-    CONTROLABLE_PARAMETER: ControlableParameter = ControlableParameter.LOSS_FACTOR
+    N_RUNS: int = 50
+    TOTAL_TIMESTEPS_ARRAY_ARRAY: int = [[10000, 20000], [10000, 20000]]
+    CONTROLABLE_PARAMETERS: ControlableParameter = [ControlableParameter.LOSS_FACTOR,
+                                                    ControlableParameter.AMPLITUDE]
+
+    ALGORITHMS = [WrappedPPO, WrappedDQN]
 
     # Define path for logging experiment
 
-    BASE_LOG_PATH: str = f"{pathlib.Path(__file__).parent.resolve()}/logs/{EXPERIMENT_NAME}"
+    for CONTROLABLE_PARAMETER, TOTAL_TIMESTEPS_ARRAY in zip(CONTROLABLE_PARAMETERS, TOTAL_TIMESTEPS_ARRAY_ARRAY):
 
-    # Run experiment
-    run_single_param_ks_experiment(BASE_LOG_PATH,
-                                   N_RUNS,
-                                   TOTAL_TIMESTEPS,
-                                   CONTROLABLE_PARAMETER,
-                                   SR,
-                                   BPM,
-                                   N_NOTES,
-                                   NOTE_VALUE)
+        for N_NOTES, TOTAL_TIMESTEPS in zip(N_NOTES_ARRAY, TOTAL_TIMESTEPS_ARRAY):
+            EXPERIMENT_NAME = f"single_param-{CONTROLABLE_PARAMETER.name}-{N_NOTES}-notes"
+
+            BASE_LOG_PATH: str = f"{pathlib.Path(__file__).parent.resolve()}/logs/{EXPERIMENT_NAME}"
+
+            for ALGORITHM in ALGORITHMS:
+
+                # Run experiment
+                run_single_param_ks_experiment(ALGORITHM,
+                                               BASE_LOG_PATH,
+                                               N_RUNS,
+                                               TOTAL_TIMESTEPS,
+                                               CONTROLABLE_PARAMETER,
+                                               SR,
+                                               BPM,
+                                               N_NOTES,
+                                               NOTE_VALUE)

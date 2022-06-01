@@ -1,9 +1,8 @@
 from fractions import Fraction
-from typing import List, Tuple, Set, Dict
+from typing import List, Tuple, Set
 import os
 import pathlib
 import csv
-from random import randint
 import numpy as np
 from scipy.io.wavfile import write
 from rl_instruments.environments.physical_models import ControlableParameter
@@ -12,18 +11,15 @@ from rl_instruments.models import WrappedPPO
 from rl_instruments.utils.ks import make_melody, MelodyData, predict_melody
 
 
-def create_target_parameters(controlable_parameters: Set[ControlableParameter],
-                             controlable_arrays: Dict[ControlableParameter, List[float]]) -> \
+def create_target_parameters() -> \
         Tuple[List[float], List[float], List[float], List[float]]:
 
-    if len(controlable_arrays) == 0:
-        raise ValueError
+    frequencies = [82, 123, 165, 208, 208, 165, 123, 82]
+    pluck_positions = [0.5, 0.5, 0.5, 0.5, 0.1, 0.1, 0.1, 0.1]
+    loss_factors = [0.996, 0.996, 0.996, 0.996, 0.91, 0.91, 0.91, 0.91]
+    amplitudes = [0.5, 0.5, 0.5, 0.5, 1.0, 1.0, 1.0, 1.0]
 
-    n_notes = len(list(controlable_arrays.values())[0])
-    target_params = [controlable_arrays[param] if param in controlable_parameters else [
-        param.default_value]*n_notes for param in sorted(ControlableParameter)]
-
-    return target_params
+    return (frequencies, pluck_positions, loss_factors, amplitudes)
 
 
 def create_target_melody(frequencies: List[float],
@@ -41,18 +37,7 @@ def create_target_melody(frequencies: List[float],
         target_audio, sample_rate, bpm, len(frequencies), note_value)
 
 
-def generate_random_parameters(n_notes: int,
-                               controlable_parameter: ControlableParameter) -> List[int]:
-
-    min_value = controlable_parameter.min_value
-    max_value = controlable_parameter.max_value
-    n = controlable_parameter.n
-
-    return [min_value + randint(0, n-1) * (max_value - min_value) / (n-1) for _ in range(n_notes)]
-
-
 def save_experiment_parameters(log_dir: str,
-                               n_runs: int,
                                total_timesteps: int,
                                controlable_parameters: Set[ControlableParameter],
                                sample_rate: int,
@@ -60,9 +45,9 @@ def save_experiment_parameters(log_dir: str,
                                n_notes: int,
                                note_value: int) -> None:
 
-    header = ['Number of runs', 'Total timesteps', 'Controlable parameter',
+    header = ['Total timesteps', 'Controlable parameter',
               'Sample rate', 'BPM', "Number of notes", 'Note value']
-    data = [n_runs, total_timesteps,  [cp.name for cp in controlable_parameters],
+    data = [total_timesteps,  [cp.name for cp in controlable_parameters],
             sample_rate, bpm,  n_notes,  str(Fraction(note_value))]
 
     filename = log_dir + "/experiment_parameters.csv"
@@ -117,7 +102,6 @@ def save_prediction(log_dir: str,
 
 
 def run_multi_param_ks_experiment(base_log_path: str,
-                                  n_runs: int,
                                   total_timesteps: int,
                                   controlable_parameters: Set[ControlableParameter],
                                   sample_rate: int,
@@ -131,7 +115,6 @@ def run_multi_param_ks_experiment(base_log_path: str,
     os.makedirs(log_dir, exist_ok=True)
 
     save_experiment_parameters(base_log_path,
-                               n_runs,
                                total_timesteps,
                                controlable_parameters,
                                sample_rate,
@@ -139,45 +122,55 @@ def run_multi_param_ks_experiment(base_log_path: str,
                                n_notes,
                                note_value)
 
-    for run in range(42, n_runs):
-        # Create path to log directory
+    # Extract and save parameters for melody
+    frequencies, pluck_positions, loss_factors, amplitudes = create_target_parameters()
 
-        log_dir = f"{base_log_path}/{run}/"
-        os.makedirs(log_dir, exist_ok=True)
+    os.makedirs(log_dir + "target", exist_ok=True)
+    save_target_parameters(log_dir + "target",
+                           frequencies,
+                           pluck_positions,
+                           loss_factors,
+                           amplitudes)
 
-        # Generate array of controlable parameters
-        controlable_arrays = {}
+    # Create target melody
+    target_melody = create_target_melody(
+        frequencies, pluck_positions, loss_factors, amplitudes, sample_rate, bpm, note_value)
 
-        for param in controlable_parameters:
-            controlable_array = generate_random_parameters(
-                n_notes, param)
-            controlable_arrays[param] = controlable_array
+    write(log_dir + "target/target_audio.wav",
+          sample_rate, target_melody.audio)
 
-        # Extract and save parameters for melody
-        frequencies, pluck_positions, loss_factors, amplitudes = create_target_parameters(
-            controlable_parameters, controlable_arrays)
+    env = KSMultiParamEnv(target_melody, controlable_parameters)
 
-        save_target_parameters(log_dir,
-                               frequencies,
-                               pluck_positions,
-                               loss_factors,
-                               amplitudes)
+    model = WrappedPPO(env, log_dir, info_keywords=(
+        "frequency_reward", "envelope_reward"), seed=1, load_best=False)
 
-        # Create target melody
-        target_melody = create_target_melody(
-            frequencies, pluck_positions, loss_factors, amplitudes, sample_rate, bpm, note_value)
+    predicted_audio, rewards, predicted_parameters = predict_melody(
+        env, model)
+
+    timestep_dir = log_dir + str(0)
+
+    os.makedirs(timestep_dir, exist_ok=True)
+
+    save_prediction(timestep_dir, predicted_audio, sample_rate,
+                    predicted_parameters, rewards)
+
+    for i in range(1, 16):
+        # if os.path.exists(log_dir + "best_model.zip"):
+        #     os.remove(log_dir + "best_model.zip")
 
         # Create environment and train model
-        env = KSMultiParamEnv(target_melody, controlable_parameters)
 
-        model = WrappedPPO(env, log_dir, info_keywords=(
-            "frequency_reward", "envelope_reward"))
-        model.learn(total_timesteps)
+        model.learn(10000)
 
         # Make and save predictions
         predicted_audio, rewards, predicted_parameters = predict_melody(
             env, model)
-        save_prediction(log_dir, predicted_audio, sample_rate,
+
+        timestep_dir = log_dir + str(i*10000)
+
+        os.makedirs(timestep_dir, exist_ok=True)
+
+        save_prediction(timestep_dir, predicted_audio, sample_rate,
                         predicted_parameters, rewards)
 
 
@@ -187,12 +180,11 @@ if __name__ == '__main__':
 
     SR = 8000
     BPM = 120
-    N_NOTES_ARRAY = [8]
+    N_NOTES = 8
     NOTE_VALUE = 1/8
 
     # Training parameters
 
-    N_RUNS: int = 50
     TOTAL_TIMESTEPS: int = 150000
     CONTROLABLE_PARAMETERS: Set[ControlableParameter] = {
         ControlableParameter.FREQUENCY,
@@ -200,18 +192,15 @@ if __name__ == '__main__':
         ControlableParameter.LOSS_FACTOR,
         ControlableParameter.AMPLITUDE}
 
-    # Define path for logging experiment
-    for N_NOTES in N_NOTES_ARRAY:
-        EXPERIMENT_NAME = f"multi_param-{N_NOTES}-notes"
+    EXPERIMENT_NAME = "training_illustration"
 
-        BASE_LOG_PATH: str = f"{pathlib.Path(__file__).parent.resolve()}/logs/{EXPERIMENT_NAME}"
+    BASE_LOG_PATH: str = f"{pathlib.Path(__file__).parent.resolve()}/logs/{EXPERIMENT_NAME}"
 
-        # Run experiment
-        run_multi_param_ks_experiment(BASE_LOG_PATH,
-                                      N_RUNS,
-                                      TOTAL_TIMESTEPS,
-                                      CONTROLABLE_PARAMETERS,
-                                      SR,
-                                      BPM,
-                                      N_NOTES,
-                                      NOTE_VALUE)
+    # Run experiment
+    run_multi_param_ks_experiment(BASE_LOG_PATH,
+                                  TOTAL_TIMESTEPS,
+                                  CONTROLABLE_PARAMETERS,
+                                  SR,
+                                  BPM,
+                                  N_NOTES,
+                                  NOTE_VALUE)

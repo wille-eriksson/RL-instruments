@@ -4,7 +4,7 @@ import csv
 from random import randint
 import numpy as np
 from rl_instruments.environments.piano_rolls.piano_roll_target import PianoRollTargetEnv
-from rl_instruments.models import WrappedPPO
+from rl_instruments.models import WrappedDQN, WrappedModel
 from rl_instruments.utils.piano import predict_piano_roll
 
 
@@ -43,7 +43,8 @@ def save_experiment_parameters(log_dir: str,
         writer.writerow(data)
 
 
-def run_piano_roll_target_experiment(base_log_path: str,
+def run_piano_roll_target_experiment(algorithm: WrappedModel,
+                                     base_log_path: str,
                                      n_runs: int,
                                      total_timesteps: int,
                                      n_keys: int = 12,
@@ -64,7 +65,7 @@ def run_piano_roll_target_experiment(base_log_path: str,
 
         # Create path to log directory
 
-        log_dir = f"{base_log_path}/{run}/"
+        log_dir = f"{base_log_path}/{algorithm.__name__}/runs/{run}/"
         os.makedirs(log_dir, exist_ok=True)
 
         # Generate a random piano roll
@@ -75,7 +76,7 @@ def run_piano_roll_target_experiment(base_log_path: str,
         env = PianoRollTargetEnv(target_piano_roll)
 
         # Create and train model
-        model = WrappedPPO(env, log_dir)
+        model = algorithm(env, log_dir)
         model.learn(total_timesteps)
 
         # Make and save predicitons
@@ -90,21 +91,23 @@ if __name__ == '__main__':
     # Audio generation parameters
 
     N_KEYS = 12
-    N_NOTES = 4
-
-    EXPERIMENT_NAME = "piano_roll_target"
+    N_NOTES_ARRAY = [4, 8]
 
     # Training parameters
 
-    N_RUNS: int = 1
+    N_RUNS: int = 50
     TOTAL_TIMESTEPS: int = 30000
 
-    # Define path for logging experiment
+    for N_NOTES in N_NOTES_ARRAY:
+        EXPERIMENT_NAME = f"piano_roll_target-{N_NOTES}-notes"
+        # Define path for logging experiment
 
-    BASE_LOG_PATH: str = f"{pathlib.Path(__file__).parent.resolve()}/logs/{EXPERIMENT_NAME}"
+        BASE_LOG_PATH: str = f"{pathlib.Path(__file__).parent.resolve()}/logs/{EXPERIMENT_NAME}"
 
-    run_piano_roll_target_experiment(BASE_LOG_PATH,
-                                     N_RUNS,
-                                     TOTAL_TIMESTEPS,
-                                     N_KEYS,
-                                     N_NOTES)
+        for ALGORITHM in [WrappedDQN]:
+            run_piano_roll_target_experiment(ALGORITHM,
+                                             BASE_LOG_PATH,
+                                             N_RUNS,
+                                             TOTAL_TIMESTEPS,
+                                             N_KEYS,
+                                             N_NOTES)

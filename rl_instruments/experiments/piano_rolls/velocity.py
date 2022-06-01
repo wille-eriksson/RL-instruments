@@ -30,7 +30,7 @@ def save_piano_roll(log_dir: str, filename: str, piano_roll: np.ndarray) -> None
 def save_experiment_parameters(log_dir: str,
                                n_runs: int,
                                total_timesteps: int,
-                               sr: int,
+                               sample_rate: int,
                                bpm: int,
                                n_keys: int,
                                n_notes: int,
@@ -40,7 +40,7 @@ def save_experiment_parameters(log_dir: str,
 
     header = ['Number of runs', 'Total timesteps', 'Sample rate', 'BPM', "Number of keys",
               "Number of notes", "Number of velocities", 'Note value', 'Base note number']
-    data = [n_runs, total_timesteps, sr, bpm, n_keys, n_notes,
+    data = [n_runs, total_timesteps, sample_rate, bpm, n_keys, n_notes,
             n_velocities, str(Fraction(note_value)), base_note_number]
 
     filename = log_dir + "/experiment_parameters.csv"
@@ -54,7 +54,7 @@ def save_experiment_parameters(log_dir: str,
 def run_audio_target_experiment(base_log_path: str,
                                 n_runs: int,
                                 total_timesteps: int,
-                                sr: int = 8000,
+                                sample_rate: int = 8000,
                                 bpm: int = 120,
                                 n_keys: int = 12,
                                 n_notes: int = 4,
@@ -70,7 +70,7 @@ def run_audio_target_experiment(base_log_path: str,
     save_experiment_parameters(base_log_path,
                                n_runs,
                                total_timesteps,
-                               sr,
+                               sample_rate,
                                bpm,
                                n_keys,
                                n_notes,
@@ -82,7 +82,7 @@ def run_audio_target_experiment(base_log_path: str,
 
         # Create path to log directory
 
-        log_dir = f"{base_log_path}/{run}/"
+        log_dir = f"{base_log_path}/runs/{run}/"
         os.makedirs(log_dir, exist_ok=True)
 
         # Generate a random piano roll
@@ -92,14 +92,15 @@ def run_audio_target_experiment(base_log_path: str,
 
         # Synthesize audio
         target_audio = PianoRollManager(
-            target_piano_roll, bpm, note_value, sr, base_note_number).get_audio()
+            target_piano_roll, bpm, note_value, sample_rate, base_note_number).get_audio()
 
         # Create environment
-        env = VelocitytEnv(target_audio, sr, bpm,
+        env = VelocitytEnv(target_audio, sample_rate, bpm,
                            note_value, n_notes, n_keys, n_velocities)
 
         # Create and train model
-        model = WrappedPPO(env, log_dir)
+        model = WrappedPPO(env, log_dir, info_keywords=(
+                           "frequency_reward", "envelope_reward"))
         model.learn(total_timesteps)
 
         # Make and save predicitons
@@ -116,29 +117,30 @@ if __name__ == '__main__':
     SR = 8000
     BPM = 120
     N_KEYS = 12
-    N_NOTES = 4
+    N_NOTES_ARRAY = [4, 8]
     N_VELOCITIES = 2
     NOTE_VALUE = 1/8
     BASE_NOTE_NUMBER = 60
 
-    EXPERIMENT_NAME = "velocity"
-
     # Training parameters
 
-    N_RUNS: int = 1
-    TOTAL_TIMESTEPS: int = 20000
+    N_RUNS: int = 50
+    TOTAL_TIMESTEPS: int = 70000
 
     # Define path for logging experiment
 
-    BASE_LOG_PATH: str = f"{pathlib.Path(__file__).parent.resolve()}/logs/{EXPERIMENT_NAME}"
+    for N_NOTES in N_NOTES_ARRAY:
+        EXPERIMENT_NAME = f"velocity-{N_NOTES}-notes"
 
-    run_audio_target_experiment(BASE_LOG_PATH,
-                                N_RUNS,
-                                TOTAL_TIMESTEPS,
-                                SR,
-                                BPM,
-                                N_KEYS,
-                                N_NOTES,
-                                N_VELOCITIES,
-                                NOTE_VALUE,
-                                BASE_NOTE_NUMBER)
+        BASE_LOG_PATH: str = f"{pathlib.Path(__file__).parent.resolve()}/logs/{EXPERIMENT_NAME}"
+
+        run_audio_target_experiment(BASE_LOG_PATH,
+                                    N_RUNS,
+                                    TOTAL_TIMESTEPS,
+                                    SR,
+                                    BPM,
+                                    N_KEYS,
+                                    N_NOTES,
+                                    N_VELOCITIES,
+                                    NOTE_VALUE,
+                                    BASE_NOTE_NUMBER)
