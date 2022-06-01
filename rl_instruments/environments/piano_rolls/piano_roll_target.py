@@ -1,3 +1,4 @@
+from typing import Tuple
 import numpy as np
 from gym.spaces import Discrete, MultiBinary
 from gym import Env
@@ -22,7 +23,7 @@ class PianoRollTargetEnv(Env):
 
         self.reset()
 
-    def step(self, action: int) -> 'tuple[np.ndarray,float,bool,dict]':
+    def step(self, action: int) -> Tuple[np.ndarray, float, bool, dict]:
 
         # Update state of written piano roll.
         self.state[action, self.current_note] = 1

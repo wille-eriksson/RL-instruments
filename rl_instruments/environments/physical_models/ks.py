@@ -1,5 +1,5 @@
 from abc import abstractmethod
-from typing import Union
+from typing import Union, List, Tuple, Set
 from enum import Enum
 import numpy as np
 import librosa
@@ -85,12 +85,12 @@ class KSEnv(Env):
     def __init__(self, target_melody: MelodyData) -> None:
         self.target_audio = target_melody.audio
         self.n_samples = target_melody.audio.size
-        self.sr = target_melody.sr
+        self.sample_rate = target_melody.sample_rate
         self.n_notes = target_melody.n_notes
         self.bpm = target_melody.bpm
         self.note_value = target_melody.note_value
 
-        self.spn = int(self.sr*(4*self.note_value) *
+        self.spn = int(self.sample_rate*(4*self.note_value) *
                        (60/self.bpm))  # Samples per note
 
         self.target_stfts = [self._get_stft(
@@ -112,7 +112,7 @@ class KSEnv(Env):
 
         self.reset()
 
-    def step(self, action: Union[int, 'list[int]']) -> 'tuple[np.ndarray,float,bool,dict]':
+    def step(self, action: Union[int, List[int]]) -> Tuple[np.ndarray, float, bool, dict]:
 
         freq, pluck_position, loss_factor, amplitude = self._get_parameters(
             action)
@@ -126,7 +126,7 @@ class KSEnv(Env):
             self.state[:self.current_note+1, 2],
             self.state[:self.current_note+1, 3],
             self.bpm,
-            self.sr,
+            self.sample_rate,
             self.note_value)
 
         note_audio = audio[self.current_note *
@@ -138,9 +138,7 @@ class KSEnv(Env):
 
         done = self.current_note >= self.n_notes
 
-        info = {}
-
-        return self.state, reward, done, info
+        return self.state, reward, done, self.info
 
     def render(self, mode: str = "human") -> None:
         print(self.state)
@@ -148,11 +146,19 @@ class KSEnv(Env):
     def reset(self) -> np.ndarray:
         self.state = np.zeros(self.observation_space.shape)
         self.current_note = 0
+        self.info = {
+            "frequency_reward": 0.0,
+            "envelope_reward": 0.0
+        }
         return self.state
 
     def _get_reward(self, audio: np.ndarray) -> float:
         frequency_reward = self._get_frequency_reward(audio)
         envelope_reward = self._get_envelope_reward(audio)
+
+        self.info["frequency_reward"] += frequency_reward
+        self.info["envelope_reward"] += envelope_reward
+
         return (frequency_reward + envelope_reward)/2
 
     def _get_frequency_reward(self, audio: np.ndarray) -> float:
@@ -204,7 +210,7 @@ class KSSingleParamEnv(KSEnv):
 
         self.action_space = Discrete(controlable_parameter.n)
 
-    def _get_parameters(self, action: int) -> 'tuple[float, float, float, float]':
+    def _get_parameters(self, action: int) -> Tuple[float, float, float, float]:
 
         controlable_parameter_value = self._get_controlable_parameter_value(
             action, self.controlable_parameter)
@@ -216,7 +222,7 @@ class KSSingleParamEnv(KSEnv):
 class KSMultiParamEnv(KSEnv):
     def __init__(self,
                  target_melody: MelodyData,
-                 controlable_parameters: 'set[ControlableParameter]') -> None:
+                 controlable_parameters: Set[ControlableParameter]) -> None:
 
         if len(controlable_parameters) == 0:
             raise ValueError
@@ -226,13 +232,13 @@ class KSMultiParamEnv(KSEnv):
         self.controlable_parameters = controlable_parameters
         self._define_action_space(controlable_parameters)
 
-    def _define_action_space(self, controlable_parameters: 'list[ControlableParameter]') -> None:
+    def _define_action_space(self, controlable_parameters: List[ControlableParameter]) -> None:
 
         action_space_array = [cp.n for cp in sorted(controlable_parameters)]
 
         self.action_space = MultiDiscrete(action_space_array)
 
-    def _get_parameters(self, action: 'list[int]') -> 'tuple[float, float, float, float]':
+    def _get_parameters(self, action: List[int]) -> Tuple[float, float, float, float]:
 
         parameters = []
 

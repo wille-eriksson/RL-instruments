@@ -1,3 +1,4 @@
+from typing import Tuple
 import numpy as np
 import librosa
 from gym import Env
@@ -14,19 +15,19 @@ class AudioTargetEnv(Env):
     """
 
     def __init__(self, audio: np.ndarray,
-                 sr: int,
+                 sample_rate: int,
                  bpm: int,
                  note_value: float,
                  n_notes: int,
                  n_keys: int = 12):
         self.target_audio = audio
-        self.sr = sr
+        self.sample_rate = sample_rate
         self.bpm = bpm
         self.note_value = note_value
         self.n_keys = n_keys
         self.n_notes = n_notes
 
-        self.spn = int(self.sr*(4*self.note_value) *
+        self.spn = int(self.sample_rate*(4*self.note_value) *
                        (60/self.bpm))  # Samples per note
 
         self.target_stfts = [self._get_stft(
@@ -40,15 +41,15 @@ class AudioTargetEnv(Env):
 
         self.reset()
 
-    def step(self, action: int) -> 'tuple[np.ndarray,float,bool,dict]':
+    def step(self, action: int) -> Tuple[np.ndarray, float, bool, dict]:
 
         # Update state of learnt roll.
         self.state[action, self.current_note] = 100
 
-        midi_data = PianoRollManager(self.state[:, :self.current_note + 1],
+        midi_data = PianoRollManager(piano_roll=self.state[:, :self.current_note + 1],
                                      bpm=self.bpm,
                                      note_value=self.note_value,
-                                     sr=self.sr)
+                                     sample_rate=self.sample_rate)
 
         note_audio = midi_data.get_audio()[self.current_note *
                                            self.spn:(self.current_note+1)*self.spn]

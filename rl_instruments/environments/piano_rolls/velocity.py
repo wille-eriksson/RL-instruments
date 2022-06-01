@@ -1,3 +1,4 @@
+from typing import Tuple
 import numpy as np
 import librosa
 from numpy.lib.stride_tricks import sliding_window_view
@@ -16,16 +17,22 @@ class VelocitytEnv(Env):
 
     MAX_AMPLITUDE: float = 1.0
 
-    def __init__(self, audio: np.ndarray, sr: int, bpm: int, note_value: float, n_notes: int, n_keys: int = 12, n_velocities: int = 2) -> None:
+    def __init__(self, audio: np.ndarray,
+                 sample_rate: int,
+                 bpm: int,
+                 note_value: float,
+                 n_notes: int,
+                 n_keys: int = 12,
+                 n_velocities: int = 2) -> None:
         self.target_audio = audio
-        self.sr = sr
+        self.sample_rate = sample_rate
         self.bpm = bpm
         self.note_value = note_value
         self.n_keys = n_keys
         self.n_notes = n_notes
         self.n_velocities = n_velocities
 
-        self.spn = int(self.sr*(4*self.note_value) *
+        self.spn = int(self.sample_rate*(4*self.note_value) *
                        (60/self.bpm))  # Samples per note
 
         self.target_stfts = [self._get_stft(
@@ -42,7 +49,7 @@ class VelocitytEnv(Env):
 
         self.reset()
 
-    def step(self, action: int) -> 'tuple[np.ndarray,float,bool,dict]':
+    def step(self, action: int) -> Tuple[np.ndarray, float, bool, dict]:
 
         # Update state of learnt roll.
         pressed_key, velocity_boost = action
@@ -53,7 +60,7 @@ class VelocitytEnv(Env):
         midi_data = PianoRollManager(self.state[:, :self.current_note + 1],
                                      bpm=self.bpm,
                                      note_value=self.note_value,
-                                     sr=self.sr)
+                                     sample_rate=self.sample_rate)
 
         note_audio = midi_data.get_audio()[self.current_note *
                                            self.spn:(self.current_note+1)*self.spn]
@@ -65,9 +72,7 @@ class VelocitytEnv(Env):
         # We are done if all bars have been written.
         done = self.current_note >= self.n_notes
 
-        info = {}
-
-        return self.state.flatten(), reward, done, info
+        return self.state.flatten(), reward, done, self.info
 
     def render(self, mode="human") -> np.ndarray:
         plot_piano_roll(self.state)
@@ -76,11 +81,19 @@ class VelocitytEnv(Env):
     def reset(self) -> np.ndarray:
         self.current_note = 0
         self.state = np.zeros((self.n_keys, self.n_notes), dtype=np.int8)
+        self.info = {
+            "frequency_reward": 0.0,
+            "envelope_reward": 0.0
+        }
         return self.state.flatten()
 
     def _get_reward(self, audio: np.ndarray) -> float:
         frequency_reward = self._get_frequency_reward(audio)
         envelope_reward = self._get_envelope_reward(audio)
+
+        self.info["frequency_reward"] += frequency_reward
+        self.info["envelope_reward"] += envelope_reward
+
         return (frequency_reward + envelope_reward)/2
 
     def _get_frequency_reward(self, audio: np.ndarray) -> float:
@@ -90,9 +103,9 @@ class VelocitytEnv(Env):
 
     def _get_envelope_reward(self, audio: np.ndarray) -> float:
         envelope = self._get_envelope(audio)
-        mse = np.sum(((envelope - self.target_envelopes[self.current_note]) /
-                     self.MAX_AMPLITUDE)**2)/envelope.size
-        return 1 - mse
+        avg_dev = np.sum(np.abs((envelope - self.target_envelopes[self.current_note]) /
+                                self.MAX_AMPLITUDE))/envelope.size
+        return 1 - avg_dev
 
     def _get_stft(self, audio: np.ndarray) -> np.ndarray:
         return normalize(
